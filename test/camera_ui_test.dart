@@ -30,18 +30,18 @@ void main() {
     expect(find.textContaining('IP address, e.g.'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).at(0), 'Front door');
-    await tester.enterText(find.byType(TextField).at(1), '192.168.1.50');
+    await tester.enterText(find.byType(TextField).at(1), '127.0.0.1');
     await tester.enterText(find.byType(TextField).at(2), 'secret');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(stored.single.host, '192.168.1.50');
+    expect(stored.single.host, '127.0.0.1');
     expect(stored.single.cloudPassword, 'secret');
     expect(find.text('Front door'), findsOneWidget);
     expect(find.byIcon(Icons.videocam), findsWidgets);
-    // Let the reachability check (2 s timeout) finish.
+    // Let the reachability check finish (nothing listens: refused at once).
     await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 2500)),
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
     );
   });
 }
