@@ -55,7 +55,7 @@ class _GroupDialogState extends State<_GroupDialog> {
     final seen = <String>{};
     for (final e in s.entries) {
       final id = e.peerId;
-      if (id == null || !seen.add(id)) continue;
+      if (id == null || e.platform == 'camera' || !seen.add(id)) continue;
       out.add((id, e.name, e.platform, e.online));
     }
     for (final id in widget.group?.members.keys ?? const <String>[]) {
