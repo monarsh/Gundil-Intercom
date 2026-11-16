@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -63,6 +64,9 @@ class IntercomPanel extends StatelessWidget {
       ? (compact ? 76 : 96) // Video on: leave the room to the pictures.
       : (compact ? 132 : 200);
 
+  /// Connect / Cancel / Hang up: 40% smaller than the base size.
+  double get _callSize => _size * 0.6;
+
   // ------------------------------------------------------------------ idle
 
   Widget _idle(BuildContext context) {
@@ -84,7 +88,7 @@ class IntercomPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _RoundButton(
-          size: _size,
+          size: _callSize,
           color: online
               ? Colors.green.shade600
               : Theme.of(context).disabledColor,
@@ -219,7 +223,7 @@ class IntercomPanel extends StatelessWidget {
             ),
           ),
         _RoundButton(
-          size: _size,
+          size: _callSize,
           color: Colors.red,
           icon: Icons.call_end,
           label: connected.isEmpty ? 'CANCEL' : 'HANG UP',
@@ -468,15 +472,17 @@ class _RoundButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: size * 0.36, color: Colors.white),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1,
-                  fontSize: size * 0.085,
+              // Too small for readable text: icon only (Semantics keeps the label).
+              if (size >= 70)
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                    fontSize: math.max(size * 0.085, 10),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
