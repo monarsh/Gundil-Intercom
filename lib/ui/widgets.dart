@@ -6,6 +6,7 @@ IconData platformIcon(String platform) => switch (platform) {
   'linux' => Icons.computer,
   'macos' => Icons.laptop_mac,
   'ios' => Icons.phone_iphone,
+  'camera' => Icons.videocam,
   _ => Icons.devices_other,
 };
 
@@ -15,6 +16,7 @@ String platformLabel(String platform) => switch (platform) {
   'linux' => 'Linux',
   'macos' => 'macOS',
   'ios' => 'iOS',
+  'camera' => 'Camera',
   _ => platform,
 };
 

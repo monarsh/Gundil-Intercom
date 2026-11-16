@@ -68,6 +68,8 @@ Future<void> main(List<String> args) async {
     onSavedPeersChanged: (list) => state.save(saved: list),
     groups: state.groups,
     onGroupsChanged: (list) => state.save(groups: list),
+    cameras: state.cameras,
+    onCamerasChanged: (list) => state.save(cameras: list),
   );
 
   // Fail early (with a clear message) if the audio library or devices are
@@ -391,18 +393,20 @@ class _Node {
 
 /// Persistent identity and learned peers.
 class _NodeState {
-  _NodeState(this.file, this.deviceId, this.saved, this.groups);
+  _NodeState(this.file, this.deviceId, this.saved, this.groups, this.cameras);
 
   final File file;
   final String deviceId;
   List<SavedPeer> saved;
   List<Group> groups;
+  List<SavedCamera> cameras;
 
   static _NodeState load(String? path) {
     final file = File(path ?? _defaultStatePath());
     String? id;
     var saved = <SavedPeer>[];
     var groups = <Group>[];
+    var cameras = <SavedCamera>[];
     try {
       final json = jsonDecode(file.readAsStringSync());
       if (json is Map) {
@@ -415,6 +419,13 @@ class _NodeState {
         if (g is List) {
           groups = g.map(Group.fromJson).whereType<Group>().toList();
         }
+        final c = json['cameras'];
+        if (c is List) {
+          cameras = c
+              .map(SavedCamera.fromJson)
+              .whereType<SavedCamera>()
+              .toList();
+        }
       }
     } catch (_) {}
     if (id == null) {
@@ -424,12 +435,17 @@ class _NodeState {
         (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
     }
-    final s = _NodeState(file, id, saved, groups);
+    final s = _NodeState(file, id, saved, groups, cameras);
     s.save();
     return s;
   }
 
-  void save({List<SavedPeer>? saved, List<Group>? groups}) {
+  void save({
+    List<SavedPeer>? saved,
+    List<Group>? groups,
+    List<SavedCamera>? cameras,
+  }) {
+    if (cameras != null) this.cameras = cameras;
     if (saved != null) this.saved = saved;
     if (groups != null) this.groups = groups;
     try {
@@ -439,6 +455,7 @@ class _NodeState {
           'deviceId': deviceId,
           'savedPeers': [for (final s in this.saved) s.toJson()],
           'groups': [for (final g in this.groups) g.toJson()],
+          'cameras': [for (final c in this.cameras) c.toJson()],
         }),
       );
     } catch (e) {
