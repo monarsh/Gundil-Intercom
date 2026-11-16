@@ -477,6 +477,9 @@ void main() {
 
       core.hangUp();
       expect(core.conversation, isNull);
+      // Still in the list as online right after hanging up.
+      expect(core.peer(c.peerId)!.connected, isFalse);
+      expect(core.peer(c.peerId)!.online, isTrue);
       core.removePeer(core.entries.single);
       expect(core.entries, isEmpty);
       expect(stored, isEmpty);

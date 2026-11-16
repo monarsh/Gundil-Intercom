@@ -238,6 +238,11 @@ class IntercomCore {
   /// Cameras by peer id, and the ones we're in a call with.
   final Map<String, SavedCamera> _cameras;
   final Map<String, CameraSession> _cameraSessions = {};
+
+  /// Failed reachability checks in a row, per camera. A camera shows offline
+  /// only after two, because a Tapo briefly refuses connections (e.g. just
+  /// after a call with it ended).
+  final Map<String, int> _cameraMisses = {};
   int _cameraTick = 0;
 
   /// Tests only: device ids we pretend we can't connect to (no route).
@@ -1089,6 +1094,7 @@ class IntercomCore {
 
   void removeCamera(String peerId) {
     if (_cameras.remove(peerId) == null) return;
+    _cameraMisses.remove(peerId);
     if (_conversation?.members.containsKey(peerId) ?? false) {
       _removeMember(peerId, quiet: true);
     }
@@ -1133,6 +1139,9 @@ class IntercomCore {
   /// Checks which cameras answer (their stream or RTSP port).
   void _probeCameras() {
     for (final cam in _cameras.values.toList()) {
+      // In a call with it: the stream itself shows it's there, and a busy
+      // camera may refuse an extra connection.
+      if (_cameraSessions.containsKey(cam.peerId)) continue;
       () async {
         var ok = false;
         for (final port in [
@@ -1151,7 +1160,16 @@ class IntercomCore {
           } catch (_) {}
         }
         final p = _peers[cam.peerId];
-        if (p == null || _shutDown || p.reachable == ok) return;
+        if (p == null || _shutDown) return;
+        if (_cameraSessions.containsKey(cam.peerId)) return; // Call started.
+        if (ok) {
+          _cameraMisses.remove(cam.peerId);
+        } else {
+          final misses = (_cameraMisses[cam.peerId] ?? 0) + 1;
+          _cameraMisses[cam.peerId] = misses;
+          if (misses < 2) return;
+        }
+        if (p.reachable == ok) return;
         p.reachable = ok;
         changed();
       }();
@@ -1186,6 +1204,8 @@ class IntercomCore {
         session.close();
         return;
       }
+      _peers[id]?.reachable = true; // Stays online after hanging up.
+      _cameraMisses.remove(id);
       _setConnected(id);
       if (!status.talk) {
         _emit('${cam.name}: ${status.summary}', error: true);
