@@ -1,7 +1,7 @@
 name: p2p_intercom
 description: "Gundil Intercom: peer-to-peer LAN push-to-talk intercom over TCP/IP for Linux, Windows and Android."
 publish_to: 'none'
-version: 1.7.0-test.1+16
+version: 1.6.1+17
 
 environment:
   sdk: ^3.8.0

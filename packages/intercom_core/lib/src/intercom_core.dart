@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'audio_engine.dart';
-import 'camera/camera.dart';
 import 'discovery.dart';
 import 'echo_suppressor.dart';
 import 'mixer.dart';
@@ -97,8 +96,6 @@ class IntercomCore {
     this.onSavedPeersChanged,
     List<Group> groups = const [],
     this.onGroupsChanged,
-    List<SavedCamera> cameras = const [],
-    this.onCamerasChanged,
     this.reconnectInterval = const Duration(seconds: 5),
     this.hooks = const PlatformHooks(),
   }) : _name = name, // ignore: prefer_initializing_formals
@@ -107,7 +104,6 @@ class IntercomCore {
        _micVolume = micVolume.clamp(0.0, maxVolume),
        _saved = [...savedPeers],
        _groups = {for (final g in groups) g.id: g},
-       _cameras = {for (final c in cameras) c.peerId: c},
        // Android uses the phone's hardware echo canceller instead.
        echoSuppression = echoSuppression ?? !Platform.isAndroid,
        _mixer = AudioMixer(sampleRate: sampleRate),
@@ -137,9 +133,6 @@ class IntercomCore {
 
   /// Called whenever the saved peer list changes, so it can be persisted.
   final void Function(List<SavedPeer> saved)? onSavedPeersChanged;
-
-  /// Called whenever the cameras change, so they can be persisted.
-  final void Function(List<SavedCamera> cameras)? onCamerasChanged;
 
   /// Called whenever the groups change, so they can be persisted.
   final void Function(List<Group> groups)? onGroupsChanged;
@@ -234,11 +227,6 @@ class IntercomCore {
 
   final List<SavedPeer> _saved;
   final Map<String, Group> _groups;
-
-  /// Cameras by peer id, and the ones we're in a call with.
-  final Map<String, SavedCamera> _cameras;
-  final Map<String, CameraSession> _cameraSessions = {};
-  int _cameraTick = 0;
 
   /// Tests only: device ids we pretend we can't connect to (no route).
   final Set<String> debugUnreachable = {};
@@ -513,10 +501,7 @@ class IntercomCore {
       }
     }
 
-    _cameras.values.forEach(_cameraPeer);
-    _probeCameras();
     _housekeeping = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (++_cameraTick % 10 == 0) _probeCameras();
       _checkConversation();
       _keepLinksAlive();
       changed();
@@ -718,7 +703,6 @@ class IntercomCore {
   /// dials it again until it answers, the call ends, or [memberTimeout]
   /// drops it. The call stays up meanwhile and continues on the new link.
   Future<void> _relink(String id) async {
-    if (_cameras.containsKey(id)) return; // Cameras have no link.
     if (_shutDown || !_relinking.add(id)) return;
     try {
       while (!_shutDown) {
@@ -1018,10 +1002,6 @@ class IntercomCore {
   /// it shows up again as a new, unsaved peer.
   void removePeer(PeerEntry entry) {
     final id = entry.peerId;
-    if (id != null && _cameras.containsKey(id)) {
-      removeCamera(id);
-      return;
-    }
     final key = entry.saved?.key;
     final before = _saved.length;
     _saved.removeWhere((s) => s.key == key || (id != null && s.peerId == id));
@@ -1038,167 +1018,6 @@ class IntercomCore {
       _forget(id);
     }
     changed();
-  }
-
-  // --------------------------------------------------------------- cameras
-
-  /// The cameras the user added.
-  List<SavedCamera> get cameras => _cameras.values.toList();
-
-  SavedCamera? camera(String peerId) => _cameras[peerId];
-
-  /// Whether we can talk through camera [peerId] in the current call
-  /// (null: not in a call with it).
-  bool? cameraCanTalk(String peerId) => _cameraSessions[peerId]?.status?.talk;
-
-  /// Adds a camera, or replaces the one with the same key.
-  SavedCamera saveCamera({
-    String? key,
-    required String name,
-    required String host,
-    String cloudPassword = '',
-    String rtspUser = '',
-    String rtspPassword = '',
-    int port = 8800,
-    int rtspPort = 554,
-  }) {
-    final h = host.trim();
-    if (InternetAddress.tryParse(h)?.type != InternetAddressType.IPv4) {
-      throw ArgumentError('Enter the camera\'s IP address, e.g. 192.168.1.50');
-    }
-    if (cloudPassword.isEmpty && rtspUser.trim().isEmpty) {
-      throw ArgumentError('Enter the cloud password or a camera account');
-    }
-    final cam = SavedCamera(
-      key: key ?? _newKey(),
-      name: name.trim().isEmpty ? 'Camera' : name.trim(),
-      host: h,
-      cloudPassword: cloudPassword,
-      rtspUser: rtspUser.trim(),
-      rtspPassword: rtspPassword,
-      port: port,
-      rtspPort: rtspPort,
-    );
-    _cameras[cam.peerId] = cam;
-    _cameraPeer(cam);
-    onCamerasChanged?.call(cameras);
-    _probeCameras();
-    changed();
-    return cam;
-  }
-
-  void removeCamera(String peerId) {
-    if (_cameras.remove(peerId) == null) return;
-    if (_conversation?.members.containsKey(peerId) ?? false) {
-      _removeMember(peerId, quiet: true);
-    }
-    if (_target == PeerTarget(peerId)) _target = const EveryoneTarget();
-    _peers.remove(peerId);
-    onCamerasChanged?.call(cameras);
-    changed();
-  }
-
-  /// Tries [cam] without calling it: connects, waits a moment for sound,
-  /// and says what works. Throws [CameraException] when nothing does.
-  Future<CameraStatus> testCamera(SavedCamera cam) async {
-    final session = CameraSession(cam, onAudio: (_) {}, onClosed: (_) {});
-    try {
-      return await session.start();
-    } finally {
-      session.close();
-    }
-  }
-
-  /// Makes (or updates) the list entry of [cam].
-  void _cameraPeer(SavedCamera cam) {
-    final address =
-        InternetAddress.tryParse(cam.host) ?? InternetAddress.loopbackIPv4;
-    final p = _peers[cam.peerId];
-    if (p != null) {
-      p
-        ..name = cam.name
-        ..address = address
-        ..port = cam.port;
-      return;
-    }
-    _peers[cam.peerId] = Peer(
-      id: cam.peerId,
-      name: cam.name,
-      platform: 'camera',
-      address: address,
-      port: cam.port,
-    )..camera = true;
-  }
-
-  /// Checks which cameras answer (their stream or RTSP port).
-  void _probeCameras() {
-    for (final cam in _cameras.values.toList()) {
-      () async {
-        var ok = false;
-        for (final port in [
-          if (cam.cloudPassword.isNotEmpty) cam.port,
-          if (cam.rtspUser.isNotEmpty) cam.rtspPort,
-        ]) {
-          try {
-            final s = await Socket.connect(
-              cam.host,
-              port,
-              timeout: const Duration(seconds: 2),
-            );
-            s.destroy();
-            ok = true;
-            break;
-          } catch (_) {}
-        }
-        final p = _peers[cam.peerId];
-        if (p == null || _shutDown || p.reachable == ok) return;
-        p.reachable = ok;
-        changed();
-      }();
-    }
-  }
-
-  /// Opens the audio connection with camera [id] for [conv].
-  Future<void> _callCamera(Conversation conv, String id) async {
-    final cam = _cameras[id];
-    if (cam == null) return;
-    late final CameraSession session;
-    session = CameraSession(
-      cam,
-      onAudio: (pcm) {
-        if (identical(_cameraSessions[id], session)) {
-          _onAudio(id, pcmToBytes(pcm));
-        }
-      },
-      onClosed: (_) {
-        if (identical(_cameraSessions[id], session)) {
-          _removeMember(id, reason: 'Lost connection to ${cam.name}');
-        }
-      },
-    );
-    _cameraSessions[id] = session;
-    try {
-      final status = await session.start();
-      if (!identical(_cameraSessions[id], session)) return; // Hung up.
-      if (!identical(_conversation, conv) ||
-          conv.members[id] != MemberState.calling) {
-        _cameraSessions.remove(id);
-        session.close();
-        return;
-      }
-      _setConnected(id);
-      if (!status.talk) {
-        _emit('${cam.name}: ${status.summary}', error: true);
-      }
-    } catch (e) {
-      if (!identical(_cameraSessions[id], session)) return;
-      _cameraSessions.remove(id);
-      session.close();
-      if (identical(_conversation, conv)) {
-        _emit('Could not reach ${cam.name}: ${_short(e)}', error: true);
-        _removeMember(id);
-      }
-    }
   }
 
   // ---------------------------------------------------------------- groups
@@ -1218,11 +1037,7 @@ class IntercomCore {
     final g = Group(
       id: _newKey(),
       name: n,
-      members: {
-        selfId: _name,
-        for (final id in memberIds)
-          if (!SavedCamera.isCameraId(id)) id: displayName(id),
-      },
+      members: {selfId: _name, for (final id in memberIds) id: displayName(id)},
       updated: DateTime.now().millisecondsSinceEpoch,
       owner: selfId,
     );
@@ -1243,7 +1058,7 @@ class IntercomCore {
         : {
             selfId: _name,
             for (final m in memberIds)
-              if (m != selfId && !SavedCamera.isCameraId(m))
+              if (m != selfId)
                 m: old.members[m]?.isNotEmpty ?? false
                     ? (_peers[m]?.name ?? old.members[m]!)
                     : displayName(m),
@@ -1956,7 +1771,6 @@ class IntercomCore {
     });
     await Future.wait(
       recipients.map((p) async {
-        if (p.camera) return _callCamera(conv, p.id);
         try {
           final link = await _linkTo(p);
           if (!identical(_conversation, conv)) return;
@@ -2160,7 +1974,6 @@ class IntercomCore {
     conv.lastHeard.remove(id);
     conv.invitedAt.remove(id);
     conv.rosters.remove(id);
-    _cameraSessions.remove(id)?.close();
     final joining = conv.joining.remove(id);
     if (joining) quiet = true;
     _mixer.remove(id);
@@ -2205,10 +2018,6 @@ class IntercomCore {
       _stopAudio();
     }
     _conversation = null;
-    for (final s in _cameraSessions.values) {
-      s.close();
-    }
-    _cameraSessions.clear();
     _cameraOn = false;
     _videoInFlight.clear();
     final hadVideo = _remoteVideo.keys.toList();
@@ -2259,15 +2068,6 @@ class IntercomCore {
             _send(id, Frame.json(MessageType.reject, {'reason': 'timeout'}));
             _removeMember(id, reason: 'Missed call from ${displayName(id)}');
           }
-        case MemberState.connected when _cameras.containsKey(id):
-          // No pings: it's alive while its stream keeps coming.
-          final session = _cameraSessions[id];
-          if (session == null ||
-              now.difference(session.lastData) > memberTimeout) {
-            _removeMember(id, reason: 'Lost connection to ${displayName(id)}');
-          } else {
-            conv.lastHeard[id] = session.lastData;
-          }
         case MemberState.connected:
           _send(id, Frame.empty(MessageType.ping));
           final quiet = now.difference(conv.lastHeard[id] ?? now);
@@ -2289,12 +2089,6 @@ class IntercomCore {
   }
 
   void _send(String id, Frame f) {
-    if (_cameras.containsKey(id)) {
-      if (f.type == MessageType.audio) {
-        _cameraSessions[id]?.sendAudio(bytesToPcm(f.payload));
-      }
-      return;
-    }
     final link = _links[id];
     if (link != null && !link.isClosed) link.send(f);
   }

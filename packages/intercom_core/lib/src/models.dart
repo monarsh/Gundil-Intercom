@@ -44,12 +44,6 @@ class Peer {
   /// Whether a live TCP connection to the peer currently exists.
   bool connected = false;
 
-  /// An IP camera we added (see `SavedCamera`), not an intercom.
-  bool camera = false;
-
-  /// Cameras: its stream port answered the last time we checked.
-  bool reachable = false;
-
   /// Protocol version the peer reported (0 = unknown yet).
   int version = 0;
 
@@ -65,7 +59,7 @@ class Peer {
   static const Duration beaconTimeout = Duration(seconds: 7);
 
   bool get online {
-    if (connected || reachable) return true;
+    if (connected) return true;
     final b = lastBeacon;
     return b != null && DateTime.now().difference(b) < beaconTimeout;
   }

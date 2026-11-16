@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../src/intercom_service.dart';
-import 'camera_dialog.dart';
 import 'group_dialog.dart';
 import 'peer_dialog.dart';
 import 'widgets.dart';
@@ -73,11 +72,6 @@ class PeerList extends StatelessWidget {
                           : 'Peers · $online online of ${entries.length}',
                       style: Theme.of(context).textTheme.labelMedium,
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _addCamera(context),
-                    icon: const Icon(Icons.videocam, size: 18),
-                    label: const Text('Camera'),
                   ),
                   TextButton.icon(
                     onPressed: onAddPeer,
@@ -267,9 +261,6 @@ class PeerList extends StatelessWidget {
                   'Reconnecting…',
                 MemberState.connected when service.isSpeaking(id!) =>
                   'Speaking…',
-                MemberState.connected
-                    when service.cameraCanTalk(id!) == false =>
-                  'Connected · listen only',
                 MemberState.connected => 'Connected',
                 MemberState.calling => 'Calling…',
                 MemberState.ringing => 'Wants to talk',
@@ -335,7 +326,7 @@ class PeerList extends StatelessWidget {
             title: const Text('Edit…'),
           ),
         ),
-        if (!e.isSaved && e.platform != 'camera')
+        if (!e.isSaved)
           const PopupMenuItem(
             value: _PeerAction.save,
             child: ListTile(
@@ -354,19 +345,7 @@ class PeerList extends StatelessWidget {
     );
   }
 
-  Future<void> _addCamera(BuildContext context) async {
-    final cam = await showCameraDialog(context, service: service);
-    if (cam != null && context.mounted) {
-      _snack(context, '${cam.name} added');
-    }
-  }
-
   Future<void> _edit(BuildContext context, PeerEntry e) async {
-    final camera = e.peerId == null ? null : service.camera(e.peerId!);
-    if (camera != null) {
-      await showCameraDialog(context, service: service, camera: camera);
-      return;
-    }
     final saved = e.saved;
     if (saved == null) {
       // Discovered peer: a name or an alternate address saves it.
@@ -424,11 +403,9 @@ class PeerList extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Remove ${e.name}?'),
-        content: Text(
-          e.platform == 'camera'
-              ? 'The camera and its passwords are removed from this device.'
-              : 'It is removed from the list and any call with it ends. If '
-                    'it is still on the network it can show up again.',
+        content: const Text(
+          'It is removed from the list and any call with it ends. If it is '
+          'still on the network it can show up again.',
         ),
         actions: [
           TextButton(

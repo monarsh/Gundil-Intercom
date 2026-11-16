@@ -28,8 +28,6 @@ Future<void> main() async {
     onSavedPeersChanged: (list) => settings.savedPeers = list,
     groups: settings.groups,
     onGroupsChanged: (list) => settings.groups = list,
-    cameras: settings.cameras,
-    onCamerasChanged: (list) => settings.cameras = list,
   );
   await service.start();
   if (WindowBridge.supported) {

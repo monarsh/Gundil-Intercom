@@ -141,7 +141,7 @@ packages:
       path: "packages/intercom_core"
       relative: true
     source: path
-    version: "1.7.0-test.1"
+    version: "1.6.1"
   jni:
     dependency: transitive
     description:
