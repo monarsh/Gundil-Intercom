@@ -236,12 +236,6 @@ class IntercomPanel extends StatelessWidget {
           ),
         ),
         if (timer != null) Text(timer, style: text.bodySmall),
-        for (final id in connected)
-          if (service.cameraCanTalk(id) == false)
-            Text(
-              '${service.displayName(id)}: listen only',
-              style: text.bodySmall?.copyWith(color: scheme.error),
-            ),
         if (connected.isNotEmpty)
           _EncryptedBadge(service: service, peers: connected),
         if (conv.group && calling.isNotEmpty && connected.isNotEmpty)
