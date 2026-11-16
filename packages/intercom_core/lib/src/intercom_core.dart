@@ -2215,12 +2215,12 @@ class IntercomCore {
   }) {
     _stopRinging();
     if (_audioRunning && rogerBeep) {
+      // Drop the voice still queued, so the tone starts at once and whole.
+      try {
+        audio.flushPlayback();
+      } catch (_) {}
       _playTone(hangupTone(sampleRate));
-      // Let the tone play out before closing the devices, unless a new
-      // conversation has connected meanwhile (switching peers).
-      Timer(const Duration(milliseconds: 300), () {
-        if (!(_conversation?.isConnected ?? false)) _stopAudio();
-      });
+      _stopAudioWhenPlayed();
     } else {
       _stopAudio();
     }
@@ -2649,6 +2649,25 @@ class IntercomCore {
     }
   }
 
+  /// Closes the audio devices once the queued tone has played out (plus the
+  /// device's own latency), unless a new conversation has connected
+  /// meanwhile (switching peers).
+  void _stopAudioWhenPlayed() {
+    final deadline = DateTime.now().add(const Duration(milliseconds: 1500));
+    Timer.periodic(const Duration(milliseconds: 50), (t) {
+      if (_conversation?.isConnected ?? false) return t.cancel();
+      if (_audioRunning &&
+          audio.queued > 0 &&
+          DateTime.now().isBefore(deadline)) {
+        return;
+      }
+      t.cancel();
+      Timer(const Duration(milliseconds: 200), () {
+        if (!(_conversation?.isConnected ?? false)) _stopAudio();
+      });
+    });
+  }
+
   // ---------------------------------------------------------------- helpers
 
   /// Plays a tone at the speaker volume (or [gain]).
@@ -2680,13 +2699,16 @@ class IntercomCore {
     return ((db + 60) / 60).clamp(0.0, 1.0);
   }
 
-  /// Rising two-tone chime: the line is open.
+  /// Rising two-tone chime: the line is open. Two notes of equal length
+  /// with a short gap; the leading silence covers the speaker starting up
+  /// (and Android switching to call audio), so the first note isn't cut.
   static Int16List connectTone(int rate) =>
-      _tones(rate, [(800.0, 70), (1200.0, 90)]);
+      _tones(rate, [(0.0, 80), (880.0, 100), (0.0, 30), (1320.0, 100)]);
 
-  /// Falling two-tone chime: the line was closed.
+  /// Falling two-tone chime: the line was closed. The mirror of
+  /// [connectTone].
   static Int16List hangupTone(int rate) =>
-      _tones(rate, [(1200.0, 70), (700.0, 110)]);
+      _tones(rate, [(0.0, 30), (1320.0, 100), (0.0, 30), (880.0, 100)]);
 
   /// Short ring burst played every 2 s while someone is ringing us.
   static Int16List ringTone(int rate) =>
@@ -2697,7 +2719,8 @@ class IntercomCore {
     for (final (freq, ms) in parts) {
       final n = rate * ms ~/ 1000;
       for (var i = 0; i < n; i++) {
-        final fade = math.min(1.0, math.min(i, n - i) / (rate * 0.005));
+        // 10 ms fade in and out: no clicks, each note starts and ends alike.
+        final fade = math.min(1.0, math.min(i, n - i) / (rate * 0.010));
         out.add(
           (5000 * fade * math.sin(2 * math.pi * freq * i / rate)).round(),
         );
