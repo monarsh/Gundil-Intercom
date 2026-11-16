@@ -333,6 +333,14 @@ jobs:
           fi
           sed "s/VERSION/$V/g" .github/release/notes.md >> release-notes.md
           ls -la dist
+      - name: Point the tag at this commit (rebuilding an existing release)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.release }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release || github.ref_name }}
