@@ -36,6 +36,16 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   talking joins the call. Members that can't reach each other directly
   (e.g. one on the LAN, one on a VPN) are heard through a member that
   reaches both.
+- **TP-Link Tapo cameras (experimental)**: add a Tapo camera (tested
+  against the protocol of the C200 family, not on every model) with
+  **Peers → Camera**, then call it like a peer to hear its microphone and
+  talk through its speaker, or include it when you call *Everyone*. Audio
+  only, no picture yet. It needs the camera's IP address and the password
+  of your Tapo account, which stays on your device and is sent only to the
+  camera. TP-Link doesn't document this protocol, so a camera firmware
+  update can break talking; add the *camera account* from the Tapo app as
+  well and the app can still listen (RTSP) when that happens. The **Test**
+  button in the dialog says what works.
 - **Switch with one tap**: pick another peer and press Connect. The current
   line is hung up and the new one opens.
 - **See who is speaking**: each participant (and *You*) has a card that

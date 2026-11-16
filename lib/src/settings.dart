@@ -141,6 +141,24 @@ class Settings {
     jsonEncode([for (final g in v) g.toJson()]),
   );
 
+  /// IP cameras the user added (see [SavedCamera]).
+  List<SavedCamera> get cameras {
+    final raw = _prefs.getString('${_p}cameras');
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw);
+      if (list is List) {
+        return list.map(SavedCamera.fromJson).whereType<SavedCamera>().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  set cameras(List<SavedCamera> v) => _prefs.setString(
+    '${_p}cameras',
+    jsonEncode([for (final c in v) c.toJson()]),
+  );
+
   /// Drops the hidden-peer list that 1.5.5–1.5.6 kept (no longer used).
   void forgetRemovedPeers() => _prefs.remove('${_p}removedPeers');
 
