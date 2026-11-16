@@ -2456,6 +2456,58 @@ class IntercomCore {
     if (n != null && n > 0) _videoInFlight[id] = n - 1;
   }
 
+  /// The microphones or speakers this device offers (empty where the
+  /// platform chooses, like Android's own audio routing).
+  List<AudioDevice> audioDevices(AudioDeviceKind kind) {
+    if (!_ensureAudio()) return const [];
+    try {
+      return audio.devices(kind);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Uses the microphone / speaker called [name] ('' = system default).
+  /// Takes effect at once, also during a call.
+  void selectAudioDevice(AudioDeviceKind kind, String name) {
+    try {
+      audio.selectDevice(kind, name);
+    } catch (e) {
+      _emit('Could not select the audio device: ${_short(e)}', error: true);
+      return;
+    }
+    if (kind == AudioDeviceKind.microphone) {
+      restartCapture();
+    } else if (_audioRunning) {
+      try {
+        audio.stopPlayback();
+        audio.startPlayback();
+      } catch (e) {
+        _emit('Speaker unavailable: ${_short(e)}', error: true);
+      }
+    }
+  }
+
+  /// Opens the microphone again (after choosing another one). No effect
+  /// outside a call.
+  void restartCapture() {
+    if (!_audioRunning) return;
+    try {
+      audio.stopCapture();
+    } catch (_) {}
+    try {
+      audio.startCapture();
+      _micOk = true;
+    } catch (e) {
+      _micOk = false;
+      _emit(
+        'Microphone unavailable: ${_short(e)} — you can listen only',
+        error: true,
+      );
+    }
+    changed();
+  }
+
   bool _ensureAudio() {
     if (_audioReady) return true;
     try {

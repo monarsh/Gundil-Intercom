@@ -46,6 +46,15 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   update can break talking; add the *camera account* from the Tapo app as
   well and the app can still listen (RTSP) when that happens. The **Test**
   button in the dialog says what works.
+- **Choose the microphone and sound output** (*Settings*): on Android the
+  built-in microphone, a wired 3.5 mm headset, a USB microphone or a
+  Bluetooth headset; on Windows, Mac and Linux any microphone and sound
+  output the system lists (3.5 mm jack, USB, Bluetooth, …). The choice applies
+  at once, also during a call, and is remembered; if that device is
+  unplugged, the system default is used. On Android the sound output
+  (speaker, earpiece, 3.5 mm / USB headset, Bluetooth) is picked with the
+  output button during a call. The Pi node takes `mic-device` /
+  `speaker-device` in its config (`--list-devices` shows the names).
 - **Switch with one tap**: pick another peer and press Connect. The current
   line is hung up and the new one opens.
 - **See who is speaking**: each participant (and *You*) has a card that

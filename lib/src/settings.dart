@@ -141,6 +141,15 @@ class Settings {
     jsonEncode([for (final g in v) g.toJson()]),
   );
 
+  /// Chosen microphone: a device name on desktop, an `AudioInput.key` on
+  /// Android; '' = the system's choice.
+  String get micDevice => _prefs.getString('${_p}micDevice') ?? '';
+  set micDevice(String v) => _prefs.setString('${_p}micDevice', v);
+
+  /// Chosen sound output (desktop): a device name; '' = system default.
+  String get speakerDevice => _prefs.getString('${_p}speakerDevice') ?? '';
+  set speakerDevice(String v) => _prefs.setString('${_p}speakerDevice', v);
+
   /// IP cameras the user added (see [SavedCamera]).
   List<SavedCamera> get cameras {
     final raw = _prefs.getString('${_p}cameras');

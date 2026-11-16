@@ -2,6 +2,18 @@ import 'dart:typed_data';
 
 import 'native_audio_bindings.dart';
 
+/// Microphones or speakers (see [AudioEngine.devices]).
+enum AudioDeviceKind { microphone, speaker }
+
+/// One microphone or speaker the system offers.
+class AudioDevice {
+  const AudioDevice(this.name, {this.isDefault = false});
+  final String name;
+
+  /// The one the system uses when none is chosen.
+  final bool isDefault;
+}
+
 /// Abstraction over the microphone/speaker so the intercom logic can be tested
 /// without real audio hardware. Capture and playback are independent because
 /// a walkie-talkie only ever does one of them at a time.
@@ -25,10 +37,18 @@ abstract class AudioEngine {
 
   /// Drops queued playback (used to cap latency).
   void flushPlayback();
+
+  /// The microphones or speakers to choose from (after [init]). Empty when
+  /// the platform picks devices itself (Android, tests).
+  List<AudioDevice> devices(AudioDeviceKind kind) => const [];
+
+  /// Uses the device called [name] the next time capture / playback starts
+  /// ('' = the system default).
+  void selectDevice(AudioDeviceKind kind, String name) {}
 }
 
 /// Real audio through the native `intercom_audio` FFI plugin.
-class NativeAudioEngine implements AudioEngine {
+class NativeAudioEngine extends AudioEngine {
   IntercomAudio get _a => IntercomAudio.instance;
   int _rate = 16000;
 
@@ -61,12 +81,31 @@ class NativeAudioEngine implements AudioEngine {
 
   @override
   void flushPlayback() => _a.clearPlayback();
+
+  @override
+  List<AudioDevice> devices(AudioDeviceKind kind) => [
+    for (final (name, isDefault) in _a.devices(kind.index))
+      AudioDevice(name, isDefault: isDefault),
+  ];
+
+  @override
+  void selectDevice(AudioDeviceKind kind, String name) =>
+      _a.selectDevice(kind.index, name);
 }
 
 /// Silent engine used in tests or when no audio device is available.
 /// Captured audio can be injected with [inject]; played audio is collected in
 /// [played].
-class FakeAudioEngine implements AudioEngine {
+class FakeAudioEngine extends AudioEngine {
+  /// What [selectDevice] was last called with.
+  final Map<AudioDeviceKind, String> selected = {};
+  List<AudioDevice> fakeDevices = const [];
+
+  @override
+  List<AudioDevice> devices(AudioDeviceKind kind) => fakeDevices;
+  @override
+  void selectDevice(AudioDeviceKind kind, String name) => selected[kind] = name;
+
   int _rate = 16000;
   bool capturing = false;
   bool playing = false;

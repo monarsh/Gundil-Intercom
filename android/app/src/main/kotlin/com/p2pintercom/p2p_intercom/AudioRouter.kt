@@ -107,12 +107,45 @@ class AudioRouter(
         notifyChange()
     }
 
-    /** Current state for the UI: {"active", "routes": [...], "current"}. */
+    /**
+     * Current state for the UI: {"active", "routes": [...], "current",
+     * "inputs": [...]}.
+     */
     fun state(): Map<String, Any?> = mapOf(
         "active" to active,
         "routes" to routes().map { it.toMap() },
         "current" to current()?.id,
+        "inputs" to inputs().map { it.toMap() },
     )
+
+    /**
+     * Microphones the user can choose from: built-in, wired (3.5 mm) headset,
+     * USB and Bluetooth. [Route.id] is the Android device id, which the
+     * native audio layer opens directly (Bluetooth instead comes with the
+     * Bluetooth output; see the Dart side).
+     */
+    fun inputs(): List<Route> {
+        val seen = mutableSetOf<String>()
+        return am.getDevices(AudioManager.GET_DEVICES_INPUTS).mapNotNull { d ->
+            val product = d.productName?.toString()?.trim().orEmpty()
+            val named = product.isNotEmpty() && !product.equals(Build.MODEL, true)
+            val (type, name) = when (d.type) {
+                AudioDeviceInfo.TYPE_BUILTIN_MIC -> "builtin" to "Built-in microphone"
+                AudioDeviceInfo.TYPE_WIRED_HEADSET ->
+                    "wired" to "Wired headset microphone (3.5 mm)"
+                AudioDeviceInfo.TYPE_USB_DEVICE, TYPE_USB_HEADSET ->
+                    "usb" to if (named) "$product (USB)" else "USB microphone"
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO, TYPE_BLE_HEADSET ->
+                    "bluetooth" to if (named) "$product (Bluetooth)" else "Bluetooth microphone"
+                else -> return@mapNotNull null
+            }
+            // A phone lists several built-in microphones; one entry is enough.
+            if (!seen.add(if (type == "builtin") type else "$type:$name")) {
+                return@mapNotNull null
+            }
+            Route(d.id.toString(), type, name)
+        }
+    }
 
     /** Switches to the route with [id]. Returns the new state. */
     fun select(id: String): Map<String, Any?> {

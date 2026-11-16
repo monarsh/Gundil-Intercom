@@ -31,6 +31,13 @@ static volatile int g_clear_playback = 0;
 
 static char g_error[256] = "";
 
+// Device choice: [0] capture, [1] playback.
+#define IA_MAX_DEVICES 32
+static char g_selected[2][256] = {"", ""};
+static int32_t g_android_device[2] = {0, 0};
+static ma_device_info g_devices[2][IA_MAX_DEVICES];
+static int32_t g_device_count[2] = {0, 0};
+
 static void set_error(const char* what, ma_result r) {
   snprintf(g_error, sizeof(g_error), "%s: %s", what, ma_result_description(r));
 }
@@ -76,6 +83,72 @@ static void playback_cb(ma_device* dev, void* out, const void* in,
     remaining -= n;
   }
   if (remaining > 0) memset(dst, 0, remaining * sizeof(ma_int16));  // underrun
+}
+
+int32_t ia_refresh_devices(void) {
+  if (!g_context_ready) return -1;
+  ma_device_info* playback;
+  ma_device_info* capture;
+  ma_uint32 playback_count, capture_count;
+  ma_result r = ma_context_get_devices(&g_context, &playback, &playback_count,
+                                       &capture, &capture_count);
+  if (r != MA_SUCCESS) {
+    set_error("list devices", r);
+    return -2;
+  }
+  g_device_count[0] = 0;
+  for (ma_uint32 i = 0; i < capture_count && i < IA_MAX_DEVICES; i++)
+    g_devices[0][g_device_count[0]++] = capture[i];
+  g_device_count[1] = 0;
+  for (ma_uint32 i = 0; i < playback_count && i < IA_MAX_DEVICES; i++)
+    g_devices[1][g_device_count[1]++] = playback[i];
+  return 0;
+}
+
+int32_t ia_device_count(int32_t kind) {
+  return (kind == 0 || kind == 1) ? g_device_count[kind] : 0;
+}
+
+const char* ia_device_name(int32_t kind, int32_t index) {
+  if ((kind != 0 && kind != 1) || index < 0 || index >= g_device_count[kind])
+    return "";
+  return g_devices[kind][index].name;
+}
+
+int32_t ia_device_is_default(int32_t kind, int32_t index) {
+  if ((kind != 0 && kind != 1) || index < 0 || index >= g_device_count[kind])
+    return 0;
+  return g_devices[kind][index].isDefault ? 1 : 0;
+}
+
+void ia_select_device(int32_t kind, const char* name) {
+  if (kind != 0 && kind != 1) return;
+  snprintf(g_selected[kind], sizeof(g_selected[kind]), "%s", name ? name : "");
+}
+
+void ia_set_android_device(int32_t kind, int32_t device_id) {
+  if (kind != 0 && kind != 1) return;
+  g_android_device[kind] = device_id;
+}
+
+// The id of the device the user chose for `kind`, or NULL for the default.
+static ma_device_id* chosen_device(int kind, ma_device_id* storage) {
+#if defined(__ANDROID__)
+  if (g_android_device[kind] > 0 && g_context.backend == ma_backend_aaudio) {
+    memset(storage, 0, sizeof(*storage));
+    storage->aaudio = g_android_device[kind];
+    return storage;
+  }
+#endif
+  if (g_selected[kind][0] == '\0') return NULL;
+  if (ia_refresh_devices() != 0) return NULL;
+  for (int32_t i = 0; i < g_device_count[kind]; i++) {
+    if (strcmp(g_devices[kind][i].name, g_selected[kind]) == 0) {
+      *storage = g_devices[kind][i].id;
+      return storage;
+    }
+  }
+  return NULL;  // Unplugged: fall back to the default.
 }
 
 int32_t ia_init(int32_t sample_rate) {
@@ -137,7 +210,14 @@ int32_t ia_start_capture(void) {
   cfg.aaudio.inputPreset = ma_aaudio_input_preset_voice_communication;
   cfg.opensl.recordingPreset = ma_opensl_recording_preset_voice_communication;
 #endif
+  ma_device_id chosen;
+  cfg.capture.pDeviceID = chosen_device(0, &chosen);
   ma_result r = ma_device_init(&g_context, &cfg, &g_capture);
+  if (r != MA_SUCCESS && cfg.capture.pDeviceID != NULL) {
+    // The chosen microphone can't be opened (just unplugged?): default.
+    cfg.capture.pDeviceID = NULL;
+    r = ma_device_init(&g_context, &cfg, &g_capture);
+  }
   if (r != MA_SUCCESS) {
     set_error("capture init", r);
     return -2;
@@ -179,7 +259,13 @@ int32_t ia_start_playback(void) {
   cfg.aaudio.contentType = ma_aaudio_content_type_speech;
   cfg.opensl.streamType = ma_opensl_stream_type_voice;
 #endif
+  ma_device_id chosen;
+  cfg.playback.pDeviceID = chosen_device(1, &chosen);
   ma_result r = ma_device_init(&g_context, &cfg, &g_playback);
+  if (r != MA_SUCCESS && cfg.playback.pDeviceID != NULL) {
+    cfg.playback.pDeviceID = NULL;
+    r = ma_device_init(&g_context, &cfg, &g_playback);
+  }
   if (r != MA_SUCCESS) {
     set_error("playback init", r);
     return -2;

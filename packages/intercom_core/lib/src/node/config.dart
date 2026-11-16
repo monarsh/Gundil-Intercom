@@ -24,6 +24,12 @@ class NodeConfig {
         'Speaker volume in percent, 0-200 (default 100). Above 100 boosts '
         'quiet audio',
     'mic-volume': 'Microphone volume in percent, 0-200 (default 100)',
+    'mic-device':
+        'Microphone to use, by name (see --list-devices). Default: the '
+        'system default',
+    'speaker-device':
+        'Sound output to use, by name (see --list-devices). Default: the '
+        'system default',
     'echo-suppression':
         'Lower the mic while the other side talks (default true)',
     'password':
@@ -47,6 +53,7 @@ class NodeConfig {
         'File for the device id and learned peers '
         '(default /var/lib/gundil-intercom/state.json)',
     'port': 'TCP port (default 47801)',
+    'list-devices': 'Print the microphones and sound outputs, then exit',
   };
 
   static NodeConfig load(List<String> args) {

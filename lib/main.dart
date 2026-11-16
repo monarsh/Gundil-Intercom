@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'src/audio_routes.dart';
 import 'src/intercom_service.dart';
 import 'src/platform_bridge.dart';
 import 'src/settings.dart';
 import 'src/window_bridge.dart';
+import 'ui/audio_device_picker.dart';
 import 'ui/home_page.dart';
 
 Future<void> main() async {
@@ -35,6 +37,23 @@ Future<void> main() async {
   }
   if (WindowBridge.supported || Platform.isAndroid) {
     _mirrorStatusOutsideApp(service);
+  }
+  // The microphone / sound output chosen in Settings.
+  if (Platform.isAndroid) {
+    AudioRoutes.instance
+      ..onMicChanged = service.restartCapture
+      ..setMicChoice(settings.micDevice);
+    AudioRoutes.instance.refresh();
+  } else if (AudioDevicePicker.supported) {
+    if (settings.micDevice.isNotEmpty) {
+      service.selectAudioDevice(AudioDeviceKind.microphone, settings.micDevice);
+    }
+    if (settings.speakerDevice.isNotEmpty) {
+      service.selectAudioDevice(
+        AudioDeviceKind.speaker,
+        settings.speakerDevice,
+      );
+    }
   }
   // Remember volume changes (sliders in the call screen / app bar).
   service.addListener(() {

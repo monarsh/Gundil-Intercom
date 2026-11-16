@@ -42,6 +42,23 @@ IA_EXPORT int32_t ia_playback_queued(void);
 // Drops everything waiting in the playback queue.
 IA_EXPORT void ia_clear_playback(void);
 
+// --- Choosing devices -------------------------------------------------------
+// `kind`: 0 = capture (microphone), 1 = playback (speaker).
+
+// Reads the list of devices from the system (needs ia_init). Returns 0 on
+// success. The list is what ia_device_count/name/is_default then describe.
+IA_EXPORT int32_t ia_refresh_devices(void);
+IA_EXPORT int32_t ia_device_count(int32_t kind);
+// Name of device `index` ("" if out of range).
+IA_EXPORT const char* ia_device_name(int32_t kind, int32_t index);
+IA_EXPORT int32_t ia_device_is_default(int32_t kind, int32_t index);
+// Uses the device with this name from the next ia_start_* on ("" or NULL =
+// the system default). If it's gone by then, the default is used.
+IA_EXPORT void ia_select_device(int32_t kind, const char* name);
+// Android: uses the device with this AudioDeviceInfo id from the next
+// ia_start_* on (0 = let Android choose). Ignored on other platforms.
+IA_EXPORT void ia_set_android_device(int32_t kind, int32_t device_id);
+
 // Human readable description of the last error (never NULL).
 IA_EXPORT const char* ia_last_error(void);
 

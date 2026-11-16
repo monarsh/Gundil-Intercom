@@ -10,6 +10,7 @@ import '../src/settings.dart';
 import '../src/video_call.dart';
 import '../src/window_bridge.dart';
 import 'intercom_panel.dart';
+import 'audio_device_picker.dart';
 import 'peer_dialog.dart';
 import 'peer_list.dart';
 import 'video_view.dart';
@@ -191,6 +192,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                   onSubmitted: (_) => Navigator.pop(ctx, true),
                 ),
+                if (Platform.isAndroid || AudioDevicePicker.supported) ...[
+                  const SizedBox(height: 12),
+                  AudioDevicePicker(
+                    service: service,
+                    settings: widget.settings,
+                  ),
+                ],
                 if (Autostart.supported) ...[
                   const SizedBox(height: 8),
                   SwitchListTile(

@@ -81,6 +81,31 @@ class _Native {
       lastError = lib
           .lookupFunction<Pointer<Utf8> Function(), Pointer<Utf8> Function()>(
             'ia_last_error',
+          ),
+      refreshDevices = lib.lookupFunction<Int32 Function(), int Function()>(
+        'ia_refresh_devices',
+      ),
+      deviceCount = lib
+          .lookupFunction<Int32 Function(Int32), int Function(int)>(
+            'ia_device_count',
+          ),
+      deviceName = lib
+          .lookupFunction<
+            Pointer<Utf8> Function(Int32, Int32),
+            Pointer<Utf8> Function(int, int)
+          >('ia_device_name'),
+      deviceIsDefault = lib
+          .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
+            'ia_device_is_default',
+          ),
+      selectDevice = lib
+          .lookupFunction<
+            Void Function(Int32, Pointer<Utf8>),
+            void Function(int, Pointer<Utf8>)
+          >('ia_select_device'),
+      setAndroidDevice = lib
+          .lookupFunction<Void Function(Int32, Int32), void Function(int, int)>(
+            'ia_set_android_device',
           );
 
   final int Function(int) init;
@@ -94,6 +119,12 @@ class _Native {
   final int Function() playbackQueued;
   final void Function() clearPlayback;
   final Pointer<Utf8> Function() lastError;
+  final int Function() refreshDevices;
+  final int Function(int) deviceCount;
+  final Pointer<Utf8> Function(int, int) deviceName;
+  final int Function(int, int) deviceIsDefault;
+  final void Function(int, Pointer<Utf8>) selectDevice;
+  final void Function(int, int) setAndroidDevice;
 }
 
 /// Thrown when the native audio layer reports a failure.
@@ -157,6 +188,34 @@ class IntercomAudio {
 
   int get playbackQueued => _n.playbackQueued();
   void clearPlayback() => _n.clearPlayback();
+
+  /// The devices of [kind] (0 = microphones, 1 = speakers) as
+  /// (name, is the system default). Needs [init].
+  List<(String, bool)> devices(int kind) {
+    if (!_initialised || _n.refreshDevices() != 0) return const [];
+    return [
+      for (var i = 0; i < _n.deviceCount(kind); i++)
+        (
+          _n.deviceName(kind, i).toDartString(),
+          _n.deviceIsDefault(kind, i) != 0,
+        ),
+    ];
+  }
+
+  /// Uses the device called [name] from the next start on ('' = default).
+  void selectDevice(int kind, String name) {
+    final p = name.toNativeUtf8();
+    try {
+      _n.selectDevice(kind, p);
+    } finally {
+      calloc.free(p);
+    }
+  }
+
+  /// Android: uses the device with this system id from the next start on
+  /// (0 = let Android choose).
+  void setAndroidDevice(int kind, int deviceId) =>
+      _n.setAndroidDevice(kind, deviceId);
 
   void shutdown() {
     _n.shutdown();

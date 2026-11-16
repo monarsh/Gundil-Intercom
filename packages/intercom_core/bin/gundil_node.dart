@@ -75,7 +75,26 @@ Future<void> main(List<String> args) async {
   // Fail early (with a clear message) if the audio library or devices are
   // missing, instead of on the first button press.
   try {
-    NativeAudioEngine().init(defaultSampleRate);
+    final engine = NativeAudioEngine()..init(defaultSampleRate);
+    if (args.contains('--list-devices')) {
+      for (final kind in AudioDeviceKind.values) {
+        stdout.writeln(
+          kind == AudioDeviceKind.microphone
+              ? 'Microphones:'
+              : 'Sound outputs:',
+        );
+        for (final d in engine.devices(kind)) {
+          stdout.writeln('  ${d.name}${d.isDefault ? '  (default)' : ''}');
+        }
+      }
+      exit(0);
+    }
+    final mic = cfg.str('mic-device') ?? '';
+    final speaker = cfg.str('speaker-device') ?? '';
+    if (mic.isNotEmpty) engine.selectDevice(AudioDeviceKind.microphone, mic);
+    if (speaker.isNotEmpty) {
+      engine.selectDevice(AudioDeviceKind.speaker, speaker);
+    }
   } catch (e) {
     stderr.writeln('Audio is not available: $e');
     stderr.writeln(

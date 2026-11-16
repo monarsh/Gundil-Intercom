@@ -26,6 +26,11 @@ button-gpio-active-low = true
 #speaker-volume = 100
 #mic-volume = 100
 
+# Which microphone / sound output to use (e.g. a USB microphone or the
+# 3.5 mm jack), by name. List them with: gundil-intercom-node --list-devices
+#mic-device = USB PnP Sound Device
+#speaker-device =
+
 # Lowers the microphone while the other side talks, so they don't hear
 # their own voice echoed back from this speaker. Turn off with a headset.
 echo-suppression = true
