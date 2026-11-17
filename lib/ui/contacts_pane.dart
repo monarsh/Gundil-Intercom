@@ -47,14 +47,27 @@ class _ContactsPaneState extends State<ContactsPane>
         ListenableBuilder(
           listenable: service,
           builder: (context, _) {
-            final cams = service.cameras.length;
+            // How many are online right now, on each tab.
+            var peers = 0, cams = 0;
+            for (final e in service.entries) {
+              if (!e.online) continue;
+              final id = e.peerId;
+              if (id != null && service.camera(id) != null) {
+                cams++;
+              } else {
+                peers++;
+              }
+            }
             return TabBar(
               controller: _tabs,
               tabs: [
-                const Tab(icon: Icon(Icons.people), text: 'Peers'),
+                Tab(
+                  icon: const Icon(Icons.people),
+                  text: 'Peers · $peers online',
+                ),
                 Tab(
                   icon: const Icon(Icons.videocam),
-                  text: cams == 0 ? 'Cameras' : 'Cameras ($cams)',
+                  text: 'Cameras · $cams online',
                 ),
               ],
             );

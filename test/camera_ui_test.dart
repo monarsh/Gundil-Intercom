@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p_intercom/src/camera_viewer.dart';
@@ -181,15 +183,38 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Cameras (1)'), findsOneWidget);
+    expect(find.text('Cameras · 0 online'), findsOneWidget);
+    expect(find.text('Peers · 0 online'), findsOneWidget);
     expect(find.text('Add peer'), findsOneWidget);
     expect(find.text('Porch'), findsNothing);
     expect(find.text('Add camera'), findsNothing);
-    await tester.tap(find.text('Cameras (1)'));
+    await tester.tap(find.text('Cameras · 0 online'));
     await tester.pumpAndSettle();
     expect(find.text('Porch'), findsOneWidget);
     expect(find.text('Add camera'), findsOneWidget);
     expect(find.textContaining('Tapo · 127.0.0.1'), findsOneWidget);
+
+    // A camera that answers counts as online on its tab.
+    await tester.runAsync(() async {
+      final fake = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      fake.listen((c) => c.destroy());
+      service.saveCamera(
+        name: 'Gate',
+        host: '127.0.0.1',
+        kind: SavedCamera.kindRtsp,
+        rtspPort: fake.port,
+        rtspPath: '/live',
+      );
+      final end = DateTime.now().add(const Duration(seconds: 5));
+      while (!service.entries.any((e) => e.name == 'Gate' && e.online) &&
+          DateTime.now().isBefore(end)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      await fake.close();
+    });
+    await tester.pump();
+    expect(find.text('Cameras · 1 online'), findsOneWidget);
+    expect(find.text('Peers · 0 online'), findsOneWidget);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 300)),
     );
