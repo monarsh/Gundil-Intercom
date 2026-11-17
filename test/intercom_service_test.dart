@@ -163,11 +163,15 @@ void main() {
       aliceAudio.inject(voice(320, 7));
     });
     addTearDown(feeder.cancel);
-    // Mixed: Alice hears Bob + Carol summed in the same samples. That needs
-    // both streams to overlap in one mixed chunk, which can take a while
-    // when the machine is busy running the other test files in parallel.
+    // Alice hears both Bob (100) and Carol (1000), summed (1100) wherever
+    // their audio overlaps. Exact overlap depends on timing, which a busy
+    // machine doesn't give reliably; the summing itself is tested in
+    // audio_dsp_test.dart.
+    final played = aliceAudio.played;
     await eventually(
-      () => aliceAudio.played.contains(1100),
+      () =>
+          (played.contains(100) || played.contains(1100)) &&
+          (played.contains(1000) || played.contains(1100)),
       timeout: const Duration(seconds: 15),
     );
     await eventually(
