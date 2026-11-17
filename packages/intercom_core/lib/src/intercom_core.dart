@@ -2725,15 +2725,23 @@ class IntercomCore {
       _tones(rate, [(0.0, 80), (880.0, 100), (0.0, 30), (1320.0, 100)]);
 
   /// Falling two-tone chime: the line was closed. The mirror of
-  /// [connectTone].
-  static Int16List hangupTone(int rate) =>
-      _tones(rate, [(0.0, 30), (1320.0, 100), (0.0, 30), (880.0, 100)]);
+  /// [connectTone], 30% quieter.
+  static Int16List hangupTone(int rate) => _tones(rate, [
+    (0.0, 30),
+    (1320.0, 100),
+    (0.0, 30),
+    (880.0, 100),
+  ], amplitude: 3500);
 
   /// Short ring burst played every 2 s while someone is ringing us.
   static Int16List ringTone(int rate) =>
       _tones(rate, [(1000.0, 120), (0.0, 60), (1000.0, 120)]);
 
-  static Int16List _tones(int rate, List<(double, int)> parts) {
+  static Int16List _tones(
+    int rate,
+    List<(double, int)> parts, {
+    int amplitude = 5000,
+  }) {
     final out = <int>[];
     for (final (freq, ms) in parts) {
       final n = rate * ms ~/ 1000;
@@ -2741,7 +2749,7 @@ class IntercomCore {
         // 10 ms fade in and out: no clicks, each note starts and ends alike.
         final fade = math.min(1.0, math.min(i, n - i) / (rate * 0.010));
         out.add(
-          (5000 * fade * math.sin(2 * math.pi * freq * i / rate)).round(),
+          (amplitude * fade * math.sin(2 * math.pi * freq * i / rate)).round(),
         );
       }
     }
