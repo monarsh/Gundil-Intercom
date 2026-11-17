@@ -20,9 +20,23 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Camera'));
+    expect(find.text('Add peer'), findsOneWidget);
+    await tester.tap(find.text('Add camera'));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Add Tapo camera'), findsOneWidget);
+    expect(find.text('TP-Link Tapo'), findsOneWidget);
+
+    // Other (RTSP) cameras: not yet, and Add is off.
+    await tester.tap(find.text('Other (RTSP)'));
+    await tester.pump();
+    expect(find.textContaining('coming in a later version'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Add'))
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.text('TP-Link Tapo'));
+    await tester.pump();
 
     // Nothing filled in: refused with a reason.
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));

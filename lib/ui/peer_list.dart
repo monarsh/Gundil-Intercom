@@ -77,12 +77,12 @@ class PeerList extends StatelessWidget {
                   TextButton.icon(
                     onPressed: () => _addCamera(context),
                     icon: const Icon(Icons.videocam, size: 18),
-                    label: const Text('Camera'),
+                    label: const Text('Add camera'),
                   ),
                   TextButton.icon(
                     onPressed: onAddPeer,
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add'),
+                    label: const Text('Add peer'),
                   ),
                 ],
               ),

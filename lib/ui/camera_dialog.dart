@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../src/intercom_service.dart';
 
-/// Dialog to add or edit a TP-Link Tapo camera. Saves it through
+/// The kinds of camera the Add camera dialog offers.
+enum CameraKind { tapo, rtsp }
+
+/// Dialog to add or edit a camera: a TP-Link Tapo now; other (RTSP)
+/// cameras are listed but come in a later version. Saves it through
 /// [service] and returns the saved camera (null = cancelled).
 Future<SavedCamera?> showCameraDialog(
   BuildContext context, {
@@ -35,6 +39,7 @@ class _CameraDialogState extends State<_CameraDialog> {
   late final _rtspPassword = TextEditingController(
     text: widget.camera?.rtspPassword ?? '',
   );
+  CameraKind _kind = CameraKind.tapo;
   bool _showPasswords = false;
   bool _testing = false;
   String? _result;
@@ -108,7 +113,7 @@ class _CameraDialogState extends State<_CameraDialog> {
     final text = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
-      title: Text(widget.camera == null ? 'Add Tapo camera' : 'Edit camera'),
+      title: Text(widget.camera == null ? 'Add camera' : 'Edit camera'),
       content: SizedBox(
         width: 400,
         child: SingleChildScrollView(
@@ -116,95 +121,130 @@ class _CameraDialogState extends State<_CameraDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: _name,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'e.g. Front door',
-                ),
-              ),
-              TextField(
-                controller: _host,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Camera IP address',
-                  hintText: '192.168.1.50',
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text('To listen and talk', style: text.labelLarge),
-              TextField(
-                controller: _cloud,
-                obscureText: !_showPasswords,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(
-                  labelText: 'Tapo account password',
-                  helperText:
-                      'The password you sign in to the Tapo app with. '
-                      'Kept on this device, sent only to the camera.',
-                  helperMaxLines: 3,
-                  suffixIcon: IconButton(
-                    tooltip: _showPasswords ? 'Hide' : 'Show',
-                    icon: Icon(
-                      _showPasswords ? Icons.visibility_off : Icons.visibility,
+              if (widget.camera == null) ...[
+                SegmentedButton<CameraKind>(
+                  segments: const [
+                    ButtonSegment(
+                      value: CameraKind.tapo,
+                      label: Text('TP-Link Tapo'),
                     ),
-                    onPressed: () =>
-                        setState(() => _showPasswords = !_showPasswords),
-                  ),
+                    ButtonSegment(
+                      value: CameraKind.rtsp,
+                      label: Text('Other (RTSP)'),
+                    ),
+                  ],
+                  selected: {_kind},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (k) => setState(() {
+                    _kind = k.first;
+                    _result = null;
+                  }),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text('To listen only (optional)', style: text.labelLarge),
-              Text(
-                'The "camera account" from the Tapo app (Advanced settings). '
-                'Used when the camera refuses the password above.',
-                style: text.bodySmall,
-              ),
-              TextField(
-                controller: _rtspUser,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Camera account username',
-                ),
-              ),
-              TextField(
-                controller: _rtspPassword,
-                obscureText: !_showPasswords,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  labelText: 'Camera account password',
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _testing ? null : _test,
-                    icon: _testing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.network_check, size: 18),
-                    label: Text(_testing ? 'Testing…' : 'Test'),
-                  ),
-                ],
-              ),
-              if (_result != null)
+                const SizedBox(height: 8),
+              ],
+              if (_kind == CameraKind.rtsp)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    _result!,
-                    style: TextStyle(
-                      color: _resultOk ? Colors.green.shade700 : scheme.error,
+                    'Other cameras that stream RTSP (most IP cameras) are '
+                    'coming in a later version. For now only TP-Link Tapo '
+                    'cameras can be added.',
+                    style: text.bodyMedium,
+                  ),
+                )
+              else ...[
+                TextField(
+                  controller: _name,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'e.g. Front door',
+                  ),
+                ),
+                TextField(
+                  controller: _host,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Camera IP address',
+                    hintText: '192.168.1.50',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('To listen and talk', style: text.labelLarge),
+                TextField(
+                  controller: _cloud,
+                  obscureText: !_showPasswords,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: InputDecoration(
+                    labelText: 'Tapo account password',
+                    helperText:
+                        'The password you sign in to the Tapo app with. '
+                        'Kept on this device, sent only to the camera.',
+                    helperMaxLines: 3,
+                    suffixIcon: IconButton(
+                      tooltip: _showPasswords ? 'Hide' : 'Show',
+                      icon: Icon(
+                        _showPasswords
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showPasswords = !_showPasswords),
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                Text('To listen only (optional)', style: text.labelLarge),
+                Text(
+                  'The "camera account" from the Tapo app (Advanced settings). '
+                  'Used when the camera refuses the password above.',
+                  style: text.bodySmall,
+                ),
+                TextField(
+                  controller: _rtspUser,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Camera account username',
+                  ),
+                ),
+                TextField(
+                  controller: _rtspPassword,
+                  obscureText: !_showPasswords,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Camera account password',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _testing ? null : _test,
+                      icon: _testing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.network_check, size: 18),
+                      label: Text(_testing ? 'Testing…' : 'Test'),
+                    ),
+                  ],
+                ),
+                if (_result != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _result!,
+                      style: TextStyle(
+                        color: _resultOk ? Colors.green.shade700 : scheme.error,
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -215,7 +255,7 @@ class _CameraDialogState extends State<_CameraDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _save,
+          onPressed: _kind == CameraKind.rtsp ? null : _save,
           child: Text(widget.camera == null ? 'Add' : 'Save'),
         ),
       ],
