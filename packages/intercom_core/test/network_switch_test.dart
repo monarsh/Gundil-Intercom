@@ -104,14 +104,23 @@ void main() {
   });
 
   test('a link that went silent is dropped after a network change', () async {
+    final logged = <String>[];
+    final before = IntercomCore.log;
+    IntercomCore.log = (m) {
+      logged.add(m);
+      before(m);
+    };
+    addTearDown(() => IntercomCore.log = before);
     expect(alice.peer('bob-id')!.connected, isTrue);
     wifi.cut();
     alice.networkChanged();
     // Without the check it would look connected for many minutes. With it,
     // the link has [IntercomCore.probeTimeout] to answer, then the next
-    // housekeeping tick (every second) closes it.
+    // housekeeping tick (every second) closes it. (Not checked through
+    // `connected`: Alice may already be back with Bob another way, which is
+    // right, and made this test fail now and then.)
     await eventually(
-      () => !alice.peer('bob-id')!.connected,
+      () => logged.any((m) => m.contains('bob-id stopped answering')),
       timeout: IntercomCore.probeTimeout + const Duration(seconds: 6),
     );
   });
