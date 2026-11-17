@@ -66,6 +66,9 @@ class SavedCamera {
   /// camera account).
   bool get hasVideo => !isTapo || rtspUser.isNotEmpty;
 
+  /// Pan & tilt (ONVIF): Tapo cameras, with the camera account.
+  bool get canPanTilt => isTapo && rtspUser.isNotEmpty;
+
   /// The RTSP address without the login, as the user would type it.
   String get rtspUrl => 'rtsp://${_host(host)}:$rtspPort$rtspPath';
 

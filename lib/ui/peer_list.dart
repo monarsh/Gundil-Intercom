@@ -17,17 +17,29 @@ enum _GroupAction { edit, leave }
 /// when offline. Every peer has a ⋮ menu to edit or remove it (online or
 /// offline).
 class PeerList extends StatelessWidget {
-  const PeerList({super.key, required this.service, required this.onAddPeer});
+  const PeerList({
+    super.key,
+    required this.service,
+    required this.onAddPeer,
+    this.cameras = false,
+  });
 
   final IntercomService service;
   final VoidCallback onAddPeer;
 
+  /// The camera list instead (cameras are never in the peer list).
+  final bool cameras;
+
+  bool _isCamera(PeerEntry e) =>
+      e.peerId != null && service.camera(e.peerId!) != null;
+
   @override
   Widget build(BuildContext context) {
+    if (cameras) return _cameraList(context);
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
-        final entries = service.entries;
+        final entries = service.entries.where((e) => !_isCamera(e)).toList();
         final online = entries.where((e) => e.online).length;
         return ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -75,11 +87,6 @@ class PeerList extends StatelessWidget {
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () => _addCamera(context),
-                    icon: const Icon(Icons.videocam, size: 18),
-                    label: const Text('Add camera'),
-                  ),
-                  TextButton.icon(
                     onPressed: onAddPeer,
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add peer'),
@@ -88,6 +95,52 @@ class PeerList extends StatelessWidget {
               ),
             ),
             if (entries.isEmpty) _empty(context),
+            for (final e in entries) _tile(context, e),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _cameraList(BuildContext context) {
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) {
+        final entries = service.entries.where(_isCamera).toList();
+        final online = entries.where((e) => e.online).length;
+        return ListView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 4, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      entries.isEmpty
+                          ? 'Cameras'
+                          : 'Cameras · $online online of ${entries.length}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _addCamera(context),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add camera'),
+                  ),
+                ],
+              ),
+            ),
+            if (entries.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'No cameras yet. Add a TP-Link Tapo or another camera that '
+                  'streams RTSP to watch it, and (Tapo) talk through it.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
             for (final e in entries) _tile(context, e),
           ],
         );
@@ -273,6 +326,7 @@ class PeerList extends StatelessWidget {
                   'Needs update (no encryption)',
                 null when e.live?.wrongPassword ?? false =>
                   'Different intercom password',
+                null when _isCamera(e) => _cameraInfo(e),
                 null => e.online ? _hosts(e) : 'Offline · ${_hosts(e)}',
               },
               overflow: TextOverflow.ellipsis,
@@ -306,6 +360,13 @@ class PeerList extends StatelessWidget {
       },
       onLongPress: () => _edit(context, e),
     );
+  }
+
+  /// "Tapo · 192.168.1.50", "RTSP · gate.local", "Offline · …".
+  String _cameraInfo(PeerEntry e) {
+    final cam = service.camera(e.peerId!)!;
+    final text = '${cam.isTapo ? 'Tapo' : 'RTSP'} · ${cam.host}';
+    return e.online ? text : 'Offline · $text';
   }
 
   /// "192.168.1.5" or, with an alternate address, "192.168.1.5 · 100.64.0.7".

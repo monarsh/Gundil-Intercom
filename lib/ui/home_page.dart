@@ -14,7 +14,7 @@ import 'intercom_panel.dart';
 import 'audio_device_picker.dart';
 import 'camera_stream.dart';
 import 'peer_dialog.dart';
-import 'peer_list.dart';
+import 'contacts_pane.dart';
 import 'video_view.dart';
 import 'volume_sheet.dart';
 
@@ -510,7 +510,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       children: [
         SizedBox(
           width: 340,
-          child: PeerList(service: service, onAddPeer: _addPeerDialog),
+          child: ContactsPane(service: service, onAddPeer: _addPeerDialog),
         ),
         const VerticalDivider(width: 1),
         Expanded(
@@ -554,7 +554,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                     child: _stage(),
                   )
-                : PeerList(service: service, onAddPeer: _addPeerDialog),
+                : ContactsPane(service: service, onAddPeer: _addPeerDialog),
           ),
           if (!_showVideo) const Divider(height: 1),
           SafeArea(

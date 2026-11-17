@@ -36,7 +36,8 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   talking joins the call. Members that can't reach each other directly
   (e.g. one on the LAN, one on a VPN) are heard through a member that
   reaches both.
-- **IP cameras**: add a camera with **Peers → Add camera**.
+- **IP cameras**: cameras have their own **Cameras** tab next to *Peers*;
+  add one there with **Add camera**.
   - *TP-Link Tapo* (tested on a Tapo C200C): call it like a peer to hear its
     microphone and talk through its speaker, or include it when you call
     *Everyone*. It needs the camera's IP address and the password of your
@@ -51,9 +52,14 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
     calling it lets you listen if its sound is G.711 (you can't talk to it,
     and *Everyone* leaves it out).
   - Select a camera and press **Turn on camera** to watch it, with or
-    without a call (the button is only there for cameras). Tapo cameras
-    have an **SD/HD** switch on the picture. The picture has no sound: call
-    the camera to hear it.
+    without a call (the button is only there for cameras). The picture has
+    no sound: call the camera to hear it.
+  - **Zoom** with the 🔍 **+ / −** buttons on the picture, or pinch; drag to
+    look around while zoomed in (digital zoom, any camera).
+  - **Pan & tilt** (Tapo only): the ✥ button on the picture shows arrows;
+    press one to turn the camera a step, hold it to keep turning. It uses
+    ONVIF (port 2020) with the camera account. Tapo cameras also have an
+    **SD/HD** switch on the picture.
   - The **Test** button in the dialog says what works. The headless Pi node
     keeps cameras for calls, but shows no pictures.
 - **Choose the microphone and sound output** (*Settings*): on Android the

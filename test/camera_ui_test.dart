@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p_intercom/src/camera_viewer.dart';
 import 'package:p2p_intercom/src/intercom_service.dart';
 import 'package:p2p_intercom/ui/camera_stream.dart';
+import 'package:p2p_intercom/ui/contacts_pane.dart';
 import 'package:p2p_intercom/ui/intercom_panel.dart';
 import 'package:p2p_intercom/ui/peer_list.dart';
 
@@ -19,11 +20,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: PeerList(service: service, onAddPeer: () {}),
+          body: PeerList(service: service, onAddPeer: () {}, cameras: true),
         ),
       ),
     );
-    expect(find.text('Add peer'), findsOneWidget);
+    expect(find.textContaining('No cameras yet'), findsOneWidget);
     await tester.tap(find.text('Add camera'));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('TP-Link Tapo'), findsOneWidget);
@@ -61,7 +62,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: PeerList(service: service, onAddPeer: () {}),
+          body: PeerList(service: service, onAddPeer: () {}, cameras: true),
         ),
       ),
     );
@@ -163,5 +164,108 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 500)),
     );
     await service.shutdown();
+  });
+
+  testWidgets('cameras have their own list, not the peer list', (tester) async {
+    final service = IntercomService(
+      selfId: 'me',
+      name: 'Me',
+      audio: FakeAudioEngine(),
+      enableDiscovery: false,
+    );
+    service.saveCamera(name: 'Porch', host: '127.0.0.1', cloudPassword: 'x');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ContactsPane(service: service, onAddPeer: () {}),
+        ),
+      ),
+    );
+    expect(find.text('Cameras (1)'), findsOneWidget);
+    expect(find.text('Add peer'), findsOneWidget);
+    expect(find.text('Porch'), findsNothing);
+    expect(find.text('Add camera'), findsNothing);
+    await tester.tap(find.text('Cameras (1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Porch'), findsOneWidget);
+    expect(find.text('Add camera'), findsOneWidget);
+    expect(find.textContaining('Tapo · 127.0.0.1'), findsOneWidget);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('zoom, and pan & tilt for a Tapo', (tester) async {
+    CameraStream.debugPlayer = (url) => const SizedBox.expand();
+    final moves = <String>[];
+    CameraStage.debugPanTilt = (cam, x, y) async => moves.add('$x,$y');
+    addTearDown(() {
+      CameraStream.debugPlayer = null;
+      CameraStage.debugPanTilt = null;
+    });
+    final service = IntercomService(
+      selfId: 'me',
+      name: 'Me',
+      audio: FakeAudioEngine(),
+      enableDiscovery: false,
+    );
+    final tapo = service.saveCamera(
+      name: 'Porch',
+      host: '127.0.0.1',
+      cloudPassword: 'x',
+      rtspUser: 'cam',
+      rtspPassword: 'y',
+    );
+    final gate = service.saveCamera(
+      name: 'Gate',
+      host: '127.0.0.1',
+      kind: SavedCamera.kindRtsp,
+      rtspPath: '/live',
+    );
+    final viewer = CameraViewer()..show(tapo.peerId);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CameraStage(service: service, viewer: viewer),
+        ),
+      ),
+    );
+    final zoomOut = find.byTooltip('Zoom out');
+    IconButton button(Finder f) => tester.widget<IconButton>(
+      find.ancestor(of: f, matching: find.byType(IconButton)).first,
+    );
+    expect(button(zoomOut).onPressed, isNull);
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pump();
+    expect(find.text('Porch · 1.5×'), findsOneWidget);
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pump();
+    expect(find.text('Porch · 2.3×'), findsOneWidget);
+    await tester.tap(zoomOut);
+    await tester.tap(zoomOut);
+    await tester.pump();
+    expect(find.text('Porch'), findsOneWidget);
+
+    // Pan & tilt: arrows appear; a press moves one step.
+    expect(find.byTooltip('Pan right'), findsNothing);
+    await tester.tap(find.byTooltip('Pan & tilt'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Pan right'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Tilt down'));
+    await tester.pump();
+    expect(moves, ['1,0', '0,-1']);
+
+    // Another RTSP camera: zoom, but no pan & tilt.
+    viewer.show(gate.peerId);
+    await tester.pump();
+    expect(find.byTooltip('Zoom in'), findsOneWidget);
+    expect(find.byTooltip('Pan & tilt'), findsNothing);
+    expect(find.byTooltip('Pan right'), findsNothing);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pump(const Duration(seconds: 3));
   });
 }
