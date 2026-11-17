@@ -1069,22 +1069,33 @@ class IntercomCore {
     String? key,
     required String name,
     required String host,
+    String kind = SavedCamera.kindTapo,
     String cloudPassword = '',
     String rtspUser = '',
     String rtspPassword = '',
     int port = 8800,
     int rtspPort = 554,
+    String rtspPath = '/stream2',
   }) {
     final h = host.trim();
-    if (InternetAddress.tryParse(h)?.type != InternetAddressType.IPv4) {
-      throw ArgumentError('Enter the camera\'s IP address, e.g. 192.168.1.50');
-    }
-    if (cloudPassword.isEmpty && rtspUser.trim().isEmpty) {
-      throw ArgumentError('Enter the cloud password or a camera account');
+    final tapo = kind != SavedCamera.kindRtsp;
+    if (tapo) {
+      if (InternetAddress.tryParse(h)?.type != InternetAddressType.IPv4) {
+        throw ArgumentError(
+          'Enter the camera\'s IP address, e.g. 192.168.1.50',
+        );
+      }
+      if (cloudPassword.isEmpty && rtspUser.trim().isEmpty) {
+        throw ArgumentError('Enter the cloud password or a camera account');
+      }
+    } else if (h.isEmpty) {
+      throw ArgumentError('Enter the camera\'s RTSP address');
     }
     final cam = SavedCamera(
       key: key ?? _newKey(),
       name: name.trim().isEmpty ? 'Camera' : name.trim(),
+      kind: tapo ? SavedCamera.kindTapo : SavedCamera.kindRtsp,
+      rtspPath: rtspPath.isEmpty ? '/' : rtspPath,
       host: h,
       cloudPassword: cloudPassword,
       rtspUser: rtspUser.trim(),
@@ -1132,7 +1143,7 @@ class IntercomCore {
       p
         ..name = cam.name
         ..address = address
-        ..port = cam.port;
+        ..port = cam.probePort;
       return;
     }
     _peers[cam.peerId] = Peer(
@@ -1140,7 +1151,7 @@ class IntercomCore {
       name: cam.name,
       platform: 'camera',
       address: address,
-      port: cam.port,
+      port: cam.probePort,
     )..camera = true;
   }
 
@@ -1153,8 +1164,8 @@ class IntercomCore {
       () async {
         var ok = false;
         for (final port in [
-          if (cam.cloudPassword.isNotEmpty) cam.port,
-          if (cam.rtspUser.isNotEmpty) cam.rtspPort,
+          if (cam.isTapo && cam.cloudPassword.isNotEmpty) cam.port,
+          if (!cam.isTapo || cam.rtspUser.isNotEmpty) cam.rtspPort,
         ]) {
           try {
             final s = await Socket.connect(
@@ -1984,7 +1995,10 @@ class IntercomCore {
     if (_conversation != null) hangUp();
 
     final recipients = switch (target) {
-      EveryoneTarget() => onlinePeers,
+      // Not other RTSP cameras: they can't be talked to, only listened to.
+      EveryoneTarget() => onlinePeers.where(
+        (p) => _cameras[p.id]?.isTapo ?? true,
+      ),
       PeerTarget(:final peerId) => [?_peers[peerId]],
       GroupTarget(:final groupId) => [
         for (final id in _groups[groupId]?.members.keys ?? const <String>[])

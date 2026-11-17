@@ -344,6 +344,63 @@ void main() {
     expect(got.first.streamType, streamTypePcmaTapo);
   });
 
+  group('saved camera', () {
+    test('an RTSP address is split up', () {
+      final r = SavedCamera.parseRtspUrl(
+        'rtsp://admin:p%40ss:w@192.168.1.20:8554/cam/realmonitor?channel=1',
+      );
+      expect(r.host, '192.168.1.20');
+      expect(r.port, 8554);
+      expect(r.path, '/cam/realmonitor?channel=1');
+      expect(r.user, 'admin');
+      expect(r.password, 'p@ss:w');
+      expect(SavedCamera.parseRtspUrl('rtsp://cam.local').port, 554);
+      expect(SavedCamera.parseRtspUrl('rtsp://cam.local').path, '/');
+      expect(
+        () => SavedCamera.parseRtspUrl('http://1.2.3.4/x'),
+        throwsArgumentError,
+      );
+      expect(() => SavedCamera.parseRtspUrl('nonsense'), throwsArgumentError);
+    });
+
+    test('picture address and saving', () {
+      final tapo = SavedCamera(
+        key: 't',
+        name: 'Porch',
+        host: '192.168.1.50',
+        cloudPassword: 'x',
+      );
+      expect(tapo.hasVideo, isFalse, reason: 'needs the camera account');
+      expect(tapo.videoUrl(), isNull);
+      final tapo2 = SavedCamera.fromJson({
+        ...tapo.toJson(),
+        'rtspUser': 'me',
+        'rtspPassword': 'a b@c',
+      })!;
+      expect(tapo2.videoUrl(), 'rtsp://me:a%20b%40c@192.168.1.50:554/stream2');
+      expect(tapo2.videoUrl(hd: true), endsWith(':554/stream1'));
+      expect(tapo2.probePort, 8800);
+
+      final gate = SavedCamera(
+        key: 'g',
+        name: 'Gate',
+        host: 'gate.local',
+        kind: SavedCamera.kindRtsp,
+        rtspPort: 8554,
+        rtspPath: '/live?x=1',
+      );
+      expect(gate.hasVideo, isTrue);
+      expect(gate.videoUrl(), 'rtsp://gate.local:8554/live?x=1');
+      expect(gate.rtspUrl, 'rtsp://gate.local:8554/live?x=1');
+      expect(gate.probePort, 8554);
+      final back = SavedCamera.fromJson(gate.toJson())!;
+      expect(back.kind, SavedCamera.kindRtsp);
+      expect(back.videoUrl(), gate.videoUrl());
+      // Saved by 1.7.0 (no kind): a Tapo.
+      expect(SavedCamera.fromJson(tapo.toJson())!.isTapo, isTrue);
+    });
+  });
+
   group('camera session', () {
     late FakeTapo tapo;
     late FakeRtsp rtsp;
@@ -434,6 +491,68 @@ void main() {
       await eventually(() => heard.length > 1600);
       expect(heard.last, closeTo(6000, 300));
       s.close();
+    });
+
+    test('another RTSP camera is heard (listen only)', () async {
+      final heard = <int>[];
+      final s = CameraSession(
+        SavedCamera(
+          key: 'g',
+          name: 'Gate',
+          host: '127.0.0.1',
+          kind: SavedCamera.kindRtsp,
+          rtspUser: 'cam',
+          rtspPassword: 'secret',
+          rtspPort: rtsp.port,
+          rtspPath: '/live/ch0?subtype=1',
+        ),
+        onAudio: heard.addAll,
+        onClosed: (_) {},
+      );
+      final status = await s.start();
+      expect(status.via, 'rtsp');
+      expect(status.talk, isFalse);
+      await eventually(() => heard.length > 1600);
+      s.close();
+    });
+
+    test('Everyone leaves out other RTSP cameras', () async {
+      final core = IntercomCore(
+        selfId: 'me',
+        name: 'Me',
+        audio: FakeAudioEngine(),
+        preferredPort: 0,
+        enableDiscovery: false,
+        rogerBeep: false,
+        echoSuppression: false,
+      );
+      await core.start();
+      addTearDown(core.shutdown);
+      final c = core.saveCamera(
+        name: 'Gate',
+        host: '127.0.0.1',
+        kind: SavedCamera.kindRtsp,
+        rtspPort: rtsp.port,
+        rtspPath: '/live',
+      );
+      await eventually(() => core.peer(c.peerId)?.online ?? false);
+      await core.connect(const EveryoneTarget());
+      expect(core.conversation, isNull);
+      // Calling it on its own: listen only.
+      final withLogin = core.saveCamera(
+        key: c.key,
+        name: 'Gate',
+        host: '127.0.0.1',
+        kind: SavedCamera.kindRtsp,
+        rtspUser: 'cam',
+        rtspPassword: 'secret',
+        rtspPort: rtsp.port,
+        rtspPath: '/live',
+      );
+      await core.connect(PeerTarget(withLogin.peerId));
+      await eventually(() => core.cameraCanTalk(c.peerId) != null);
+      expect(core.cameraCanTalk(c.peerId), isFalse);
+      core.hangUp();
     });
 
     test('a call with a camera: hear it and talk to it', () async {

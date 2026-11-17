@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../src/audio_routes.dart';
+import '../src/camera_viewer.dart';
 import '../src/intercom_service.dart';
 import '../src/video_call.dart';
 import 'volume_sheet.dart';
@@ -15,6 +16,7 @@ class IntercomPanel extends StatelessWidget {
     super.key,
     required this.service,
     this.video,
+    this.viewer,
     this.onMessage,
     this.compact = false,
     this.showParticipants = true,
@@ -24,6 +26,9 @@ class IntercomPanel extends StatelessWidget {
 
   /// The local camera (camera buttons during a call), if available.
   final VideoCall? video;
+
+  /// The picture of an IP camera (camera on/off button, cameras only).
+  final CameraViewer? viewer;
 
   /// Shows a short message (e.g. "Camera permission denied").
   final void Function(String message, {bool error})? onMessage;
@@ -118,7 +123,45 @@ class IntercomPanel extends StatelessWidget {
             style: text.bodySmall,
           ),
         ],
+        ?_cameraViewButton(context, top: compact ? 8 : 16),
       ],
+    );
+  }
+
+  /// The selected camera, if the selection is a camera.
+  SavedCamera? get _selectedCamera => switch (service.target) {
+    PeerTarget(:final peerId) => service.camera(peerId),
+    _ => null,
+  };
+
+  /// Turns the selected camera's picture on or off. Only for cameras.
+  Widget? _cameraViewButton(BuildContext context, {double top = 0}) {
+    final cam = _selectedCamera;
+    final viewer = this.viewer;
+    if (cam == null || viewer == null) return null;
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: ListenableBuilder(
+        listenable: viewer,
+        builder: (context, _) {
+          final on = viewer.isShowing(cam.peerId);
+          return FilledButton.tonalIcon(
+            onPressed: () {
+              if (!on && !cam.hasVideo) {
+                onMessage?.call(
+                  'To see ${cam.name}, enter its camera account '
+                  '(⋮ → Edit camera)',
+                  error: true,
+                );
+                return;
+              }
+              viewer.toggle(cam.peerId);
+            },
+            icon: Icon(on ? Icons.videocam_off : Icons.videocam),
+            label: Text(on ? 'Turn off camera' : 'Turn on camera'),
+          );
+        },
+      ),
     );
   }
 
@@ -276,8 +319,12 @@ class IntercomPanel extends StatelessWidget {
             ),
             VolumeButton(service: service),
             if (Platform.isAndroid) const AudioOutputButton(),
-            if (connected.isNotEmpty && video != null && VideoCall.supported)
+            // Our own camera: only for intercoms, never sent to a camera.
+            if (connected.any((id) => service.camera(id) == null) &&
+                video != null &&
+                VideoCall.supported)
               CameraButtons(video: video!, onMessage: onMessage),
+            ?_cameraViewButton(context),
           ],
         ),
       ],

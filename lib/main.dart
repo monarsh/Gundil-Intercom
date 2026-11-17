@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:fvp/fvp.dart' as fvp;
 
 import 'src/audio_routes.dart';
 import 'src/intercom_service.dart';
@@ -12,6 +13,14 @@ import 'ui/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // IP camera pictures (RTSP) on every platform: live, over TCP (works
+  // through firewalls and on busy Wi-Fi).
+  fvp.registerWith(
+    options: {
+      'lowLatency': 2,
+      'player': {'avformat.rtsp_transport': 'tcp'},
+    },
+  );
   final settings = await Settings.load()
     ..forgetRemovedPeers();
   final service = IntercomService(

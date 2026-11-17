@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../src/autostart.dart';
+import '../src/camera_viewer.dart';
 import '../src/intercom_service.dart';
 import '../src/platform_bridge.dart';
 import '../src/settings.dart';
@@ -11,6 +12,7 @@ import '../src/video_call.dart';
 import '../src/window_bridge.dart';
 import 'intercom_panel.dart';
 import 'audio_device_picker.dart';
+import 'camera_stream.dart';
 import 'peer_dialog.dart';
 import 'peer_list.dart';
 import 'video_view.dart';
@@ -47,9 +49,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final VideoCall _video = VideoCall(service)
     ..onError = (m) => _showMessage(m, error: true);
 
+  /// The IP camera picture (camera on/off button).
+  final CameraViewer _viewer = CameraViewer();
+  TalkTarget? _lastTarget;
+
+  /// The picture belongs to the selected camera: it goes off when another
+  /// entry is selected or the camera is removed.
+  void _followSelection() {
+    final target = service.target;
+    final id = _viewer.showing;
+    if (id != null &&
+        (service.camera(id) == null ||
+            (_lastTarget != null && target != _lastTarget))) {
+      _viewer.stop();
+    }
+    _lastTarget = target;
+  }
+
   @override
   void initState() {
     super.initState();
+    _lastTarget = service.target;
+    service.addListener(_followSelection);
     WidgetsBinding.instance.addObserver(this);
     _eventSub = service.events.listen(
       (e) => _showMessage(e.message, error: e.error),
@@ -72,6 +93,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    service.removeListener(_followSelection);
+    _viewer.dispose();
     _video.dispose();
     _eventSub.cancel();
     _focus.dispose();
@@ -460,8 +483,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  /// Video takes the main area while anyone's camera is on.
-  bool get _showVideo => service.videoPeers.isNotEmpty || _video.on;
+  /// Video takes the main area while anyone's camera is on (or an IP
+  /// camera's picture).
+  bool get _showVideo =>
+      service.videoPeers.isNotEmpty || _video.on || _viewer.on;
+
+  bool get _callVideo => service.videoPeers.isNotEmpty || _video.on;
+
+  /// The IP camera's picture and/or the call's video.
+  Widget _stage() {
+    final camera = CameraStage(service: service, viewer: _viewer);
+    final call = VideoStage(service: service, video: _video);
+    if (!_viewer.on) return call;
+    if (!_callVideo) return camera;
+    return Column(
+      children: [
+        Expanded(child: camera),
+        const SizedBox(height: 8),
+        Expanded(child: call),
+      ],
+    );
+  }
 
   Widget _wideBody() {
     return Row(
@@ -473,11 +515,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         const VerticalDivider(width: 1),
         Expanded(
           child: ListenableBuilder(
-            listenable: Listenable.merge([service, _video]),
+            listenable: Listenable.merge([service, _video, _viewer]),
             builder: (context, _) {
               final panel = IntercomPanel(
                 service: service,
                 video: _video,
+                viewer: _viewer,
                 onMessage: _showMessage,
                 showParticipants: !_showVideo,
               );
@@ -487,7 +530,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: VideoStage(service: service, video: _video),
+                      child: _stage(),
                     ),
                   ),
                   panel,
@@ -502,14 +545,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _narrowBody() {
     return ListenableBuilder(
-      listenable: Listenable.merge([service, _video]),
+      listenable: Listenable.merge([service, _video, _viewer]),
       builder: (context, _) => Column(
         children: [
           Expanded(
             child: _showVideo
                 ? Padding(
                     padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                    child: VideoStage(service: service, video: _video),
+                    child: _stage(),
                   )
                 : PeerList(service: service, onAddPeer: _addPeerDialog),
           ),
@@ -519,6 +562,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: IntercomPanel(
               service: service,
               video: _video,
+              viewer: _viewer,
               onMessage: _showMessage,
               compact: true,
               showParticipants: !_showVideo,

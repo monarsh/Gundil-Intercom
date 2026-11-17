@@ -36,15 +36,26 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   talking joins the call. Members that can't reach each other directly
   (e.g. one on the LAN, one on a VPN) are heard through a member that
   reaches both.
-- **TP-Link Tapo cameras**: add a Tapo camera (tested on a Tapo C200C) with
-  **Peers → Add camera** (choose *TP-Link Tapo*), then call it like a peer to hear its microphone and
-  talk through its speaker, or include it when you call *Everyone*. Audio
-  only, no picture yet. It needs the camera's IP address and the password
-  of your Tapo account, which stays on your device and is sent only to the
-  camera. TP-Link doesn't document this protocol, so a camera firmware
-  update can break talking; add the *camera account* from the Tapo app as
-  well and the app can still listen (RTSP) when that happens. The **Test**
-  button in the dialog says what works.
+- **IP cameras**: add a camera with **Peers → Add camera**.
+  - *TP-Link Tapo* (tested on a Tapo C200C): call it like a peer to hear its
+    microphone and talk through its speaker, or include it when you call
+    *Everyone*. It needs the camera's IP address and the password of your
+    Tapo account, which stays on your device and is sent only to the camera.
+    To see the **picture**, also enter the *camera account* from the Tapo
+    app (camera settings → Advanced settings → Camera account); it also lets
+    the app listen (RTSP) if a firmware update ever makes the camera refuse
+    the Tapo password, since TP-Link doesn't document that protocol.
+  - *Other (RTSP)*: most other IP cameras. Enter the camera's RTSP address
+    (from its manual or app, e.g. `rtsp://192.168.1.20:554/stream1`) and,
+    if it needs one, its user name and password. You see its picture;
+    calling it lets you listen if its sound is G.711 (you can't talk to it,
+    and *Everyone* leaves it out).
+  - Select a camera and press **Turn on camera** to watch it, with or
+    without a call (the button is only there for cameras). Tapo cameras
+    have an **SD/HD** switch on the picture. The picture has no sound: call
+    the camera to hear it.
+  - The **Test** button in the dialog says what works. The headless Pi node
+    keeps cameras for calls, but shows no pictures.
 - **Choose the microphone and sound output** (*Settings*): on Android the
   built-in microphone, a wired 3.5 mm headset, a USB microphone or a
   Bluetooth headset; on Windows, Mac and Linux any microphone and sound

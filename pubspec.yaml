@@ -1,7 +1,7 @@
 name: p2p_intercom
 description: "Gundil Intercom: peer-to-peer LAN push-to-talk intercom over TCP/IP for Linux, Windows and Android."
 publish_to: 'none'
-version: 1.7.0+19
+version: 1.8.0+20
 
 environment:
   sdk: ^3.8.0
@@ -9,12 +9,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  fvp: ^0.40.0
   intercom_audio:
     path: packages/intercom_audio
   intercom_core:
     path: packages/intercom_core
   path_provider: ^2.1.6
   shared_preferences: ^2.3.0
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:
