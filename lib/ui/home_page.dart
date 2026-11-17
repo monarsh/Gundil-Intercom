@@ -445,6 +445,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             final wide = constraints.maxWidth >= _wideBreakpoint;
             return Scaffold(
               appBar: AppBar(
+                // Room for the name and, below it, the version.
+                toolbarHeight: 76,
                 title: ListenableBuilder(
                   listenable: service,
                   builder: (context, _) => Column(
@@ -452,7 +454,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     children: [
                       const Text('Gundil Intercom'),
                       Text(
-                        'You are “${service.name}” · v$appVersion',
+                        'You are “${service.name}”',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'v$appVersion',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
