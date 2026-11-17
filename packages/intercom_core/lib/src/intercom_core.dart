@@ -2087,7 +2087,9 @@ class IntercomCore {
     if (conv == null) return;
     for (final id in conv.ringing.toList()) {
       _send(id, Frame.json(MessageType.reject, {'reason': 'declined'}));
-      _removeMember(id, quiet: true);
+      // Our own button: no hang-up beep, like Cancel / Hang up. (Audio
+      // isn't running while it only rings, but keep it explicit.)
+      _removeMember(id, quiet: true, tone: false);
     }
   }
 
