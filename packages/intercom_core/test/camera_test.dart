@@ -526,5 +526,88 @@ void main() {
       expect(events.where((m) => m.contains('Could not reach')), isEmpty);
       core.hangUp();
     });
+
+    test('a camera call waits a moment after the last one ended', () async {
+      final before = IntercomCore.cameraReconnectDelay;
+      IntercomCore.cameraReconnectDelay = const Duration(seconds: 1);
+      addTearDown(() => IntercomCore.cameraReconnectDelay = before);
+      final core = IntercomCore(
+        selfId: 'me',
+        name: 'Me',
+        audio: FakeAudioEngine(),
+        preferredPort: 0,
+        enableDiscovery: false,
+        rogerBeep: false,
+      );
+      await core.start();
+      addTearDown(core.shutdown);
+      final c = core.saveCamera(
+        name: 'Porch',
+        host: '127.0.0.1',
+        cloudPassword: 'hunter2',
+        port: tapo.port,
+      );
+      await eventually(() => core.peer(c.peerId)?.online ?? false);
+      await core.connect(PeerTarget(c.peerId));
+      await eventually(() => core.conversation?.isConnected ?? false);
+      core.hangUp();
+
+      final again = DateTime.now();
+      final call = core.connect(PeerTarget(c.peerId));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(core.conversation?.members[c.peerId], MemberState.calling);
+      await call;
+      expect(core.conversation?.isConnected, isTrue);
+      expect(
+        DateTime.now().difference(again),
+        greaterThanOrEqualTo(const Duration(milliseconds: 950)),
+      );
+      core.hangUp();
+    });
+
+    test('no hang-up beep when the camera connection is lost', () async {
+      final audio = FakeAudioEngine();
+      final core = IntercomCore(
+        selfId: 'me',
+        name: 'Me',
+        audio: audio,
+        preferredPort: 0,
+        enableDiscovery: false,
+        echoSuppression: false,
+      );
+      await core.start();
+      addTearDown(core.shutdown);
+      final c = core.saveCamera(
+        name: 'Porch',
+        host: '127.0.0.1',
+        cloudPassword: 'hunter2',
+        port: tapo.port,
+      );
+      await eventually(() => core.peer(c.peerId)?.online ?? false);
+      await core.connect(PeerTarget(c.peerId));
+      await eventually(() => core.conversation?.isConnected ?? false);
+      final events = <String>[];
+      core.events.listen((e) => events.add(e.message));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      audio.played.clear();
+
+      await tapo.close(); // The camera goes away mid-call.
+      await eventually(() => core.conversation == null);
+      expect(events, contains('Lost connection to Porch'));
+      // The hang-up beep's samples (speaker volume 100%) are not played.
+      final tone = IntercomCore.hangupTone(core.sampleRate);
+      final start = tone.indexWhere((v) => v != 0) + 40;
+      final piece = tone.sublist(start, start + 40);
+      final played = audio.played;
+      var found = false;
+      for (var i = 0; i + piece.length <= played.length && !found; i++) {
+        var all = true;
+        for (var j = 0; j < piece.length && all; j++) {
+          all = played[i + j] == piece[j];
+        }
+        found = all;
+      }
+      expect(found, isFalse);
+    });
   });
 }

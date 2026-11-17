@@ -243,6 +243,9 @@ class IntercomCore {
   /// only after two, because a Tapo briefly refuses connections (e.g. just
   /// after a call with it ended).
   final Map<String, int> _cameraMisses = {};
+
+  /// When the last call with each camera ended (see [cameraReconnectDelay]).
+  final Map<String, DateTime> _cameraEndedAt = {};
   int _cameraTick = 0;
 
   /// Tests only: device ids we pretend we can't connect to (no route).
@@ -762,7 +765,11 @@ class IntercomCore {
           // The address answers but nothing listens: its app was closed.
           if (!_linkAlive(id) &&
               (_conversation?.members[id] == MemberState.connected)) {
-            _removeMember(id, reason: 'Lost connection to ${displayName(id)}');
+            _removeMember(
+              id,
+              reason: 'Lost connection to ${displayName(id)}',
+              tone: false,
+            );
           }
           return;
         } catch (_) {
@@ -1181,15 +1188,27 @@ class IntercomCore {
   /// ended (it's still closing the old one).
   static const Duration cameraBusyRetry = Duration(seconds: 15);
 
+  /// A call to a camera starts at least this long after the last call with
+  /// it ended, so the camera has finished closing the old one.
+  static Duration cameraReconnectDelay = const Duration(seconds: 5);
+
   /// Opens the audio connection with camera [id] for [conv]. A camera that
   /// refuses (busy) is tried again every second for [cameraBusyRetry].
   Future<void> _callCamera(Conversation conv, String id) async {
     final cam = _cameras[id];
     if (cam == null) return;
-    final giveUp = DateTime.now().add(cameraBusyRetry);
     bool stillCalling() =>
         identical(_conversation, conv) &&
         conv.members[id] == MemberState.calling;
+    final ended = _cameraEndedAt[id];
+    if (ended != null) {
+      final wait = ended.add(cameraReconnectDelay).difference(DateTime.now());
+      if (wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+        if (!stillCalling() || _cameraSessions.containsKey(id)) return;
+      }
+    }
+    final giveUp = DateTime.now().add(cameraBusyRetry);
     while (true) {
       late final CameraSession session;
       session = CameraSession(
@@ -1201,7 +1220,11 @@ class IntercomCore {
         },
         onClosed: (_) {
           if (identical(_cameraSessions[id], session)) {
-            _removeMember(id, reason: 'Lost connection to ${cam.name}');
+            _removeMember(
+              id,
+              reason: 'Lost connection to ${cam.name}',
+              tone: false,
+            );
           }
         },
       );
@@ -1788,7 +1811,11 @@ class IntercomCore {
           // ([memberTimeout] ends it if that doesn't work).
           _relink(id);
         } else {
-          _removeMember(id, reason: 'Lost connection to ${displayName(id)}');
+          _removeMember(
+            id,
+            reason: 'Lost connection to ${displayName(id)}',
+            tone: false,
+          );
         }
       } else if (alt == null && c.verified) {
         // Reconnect a saved peer right away rather than at the next retry.
@@ -2195,7 +2222,14 @@ class IntercomCore {
   }
 
   /// Removes [id] from the conversation; ends it when nobody is left.
-  void _removeMember(String id, {String? reason, bool quiet = false}) {
+  /// [tone]: play the hang-up beep if this ends the call (not for a lost
+  /// connection).
+  void _removeMember(
+    String id, {
+    String? reason,
+    bool quiet = false,
+    bool tone = true,
+  }) {
     final conv = _conversation;
     if (conv == null) return;
     final wasConnected = conv.members[id] == MemberState.connected;
@@ -2203,7 +2237,11 @@ class IntercomCore {
     conv.lastHeard.remove(id);
     conv.invitedAt.remove(id);
     conv.rosters.remove(id);
-    _cameraSessions.remove(id)?.close();
+    final cameraSession = _cameraSessions.remove(id);
+    if (cameraSession != null) {
+      cameraSession.close();
+      _cameraEndedAt[id] = DateTime.now();
+    }
     final joining = conv.joining.remove(id);
     if (joining) quiet = true;
     _mixer.remove(id);
@@ -2214,7 +2252,12 @@ class IntercomCore {
         ? IntercomEventKind.disconnected
         : IntercomEventKind.info;
     if (conv.members.isEmpty) {
-      _endConversation(quiet ? null : reason, kind: kind, peerId: id);
+      _endConversation(
+        quiet ? null : reason,
+        kind: kind,
+        peerId: id,
+        tone: tone,
+      );
     } else {
       if (conv.ringing.isEmpty) _stopRinging();
       if (reason != null && !quiet && conv.group) {
@@ -2249,6 +2292,10 @@ class IntercomCore {
     _conversation = null;
     for (final s in _cameraSessions.values) {
       s.close();
+    }
+    final ended = DateTime.now();
+    for (final id in _cameraSessions.keys) {
+      _cameraEndedAt[id] = ended;
     }
     _cameraSessions.clear();
     _cameraOn = false;
@@ -2306,7 +2353,11 @@ class IntercomCore {
           final session = _cameraSessions[id];
           if (session == null ||
               now.difference(session.lastData) > memberTimeout) {
-            _removeMember(id, reason: 'Lost connection to ${displayName(id)}');
+            _removeMember(
+              id,
+              reason: 'Lost connection to ${displayName(id)}',
+              tone: false,
+            );
           } else {
             conv.lastHeard[id] = session.lastData;
           }
@@ -2315,7 +2366,11 @@ class IntercomCore {
           final quiet = now.difference(conv.lastHeard[id] ?? now);
           if (quiet > relinkAfter && quiet <= memberTimeout) _relink(id);
           if (quiet > memberTimeout) {
-            _removeMember(id, reason: 'Lost connection to ${displayName(id)}');
+            _removeMember(
+              id,
+              reason: 'Lost connection to ${displayName(id)}',
+              tone: false,
+            );
           }
       }
     }
