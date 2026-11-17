@@ -696,6 +696,24 @@ class CameraButtons extends StatelessWidget {
                     )
                   : null,
             ),
+            if (on) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: video.hd
+                    ? 'Sending HD (1280×720): tap for SD'
+                    : 'Sending SD (640×480): tap for HD',
+                child: OutlinedButton(
+                  onPressed: video.busy
+                      ? null
+                      : () => _run(() => video.setHd(!video.hd)),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  child: Text(video.hd ? 'HD' : 'SD'),
+                ),
+              ),
+            ],
             if (on && Platform.isAndroid && video.canSwitch) ...[
               const SizedBox(width: 8),
               IconButton.filledTonal(

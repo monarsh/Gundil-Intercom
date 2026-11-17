@@ -46,11 +46,14 @@ class CameraInfo {
 /// (`linux/runner/camera_capture.cc`). All deliver JPEG pictures on the
 /// `p2p_intercom/camera/frames` event channel.
 class VideoCall extends ChangeNotifier {
-  VideoCall(this.service) {
+  VideoCall(this.service, {bool hd = false, this.onHdChanged}) : _hd = hd {
     service.addListener(_onService);
   }
 
   final IntercomService service;
+
+  /// Called when the SD/HD choice changes (to remember it).
+  final void Function(bool hd)? onHdChanged;
 
   /// Shows a camera error that happened on its own (camera unplugged,
   /// taken by another app, ...).
@@ -77,6 +80,58 @@ class VideoCall extends ChangeNotifier {
   static const int height = 480;
   static const int fps = 15;
   static const int quality = 70;
+
+  /// HD: 1280x720 at a little lower JPEG quality, about 80–150 KB a
+  /// picture. Fine on Wi-Fi; on a slow line pictures are skipped (never the
+  /// audio).
+  static const int hdWidth = 1280;
+  static const int hdHeight = 720;
+  static const int hdQuality = 60;
+
+  bool _hd;
+
+  /// Send HD (1280x720) instead of SD (640x480).
+  bool get hd => _hd;
+
+  Map<String, Object> _startArgs(String id) => {
+    'id': id,
+    'width': _hd ? hdWidth : width,
+    'height': _hd ? hdHeight : height,
+    'fps': fps,
+    'quality': _hd ? hdQuality : quality,
+  };
+
+  /// Switches between SD and HD; a running camera restarts at the new size
+  /// without telling the peers it went off. Returns an error message, or
+  /// null.
+  Future<String?> setHd(bool value) async {
+    if (value == _hd || _busy) return null;
+    _hd = value;
+    onHdChanged?.call(value);
+    notifyListeners();
+    final id = _cameraId;
+    if (!_on || id == null) return null;
+    _busy = true;
+    notifyListeners();
+    try {
+      try {
+        await _method.invokeMethod<void>('stop');
+      } on PlatformException {
+        // Already stopped.
+      }
+      await _method.invokeMethod<void>('start', _startArgs(id));
+      return null;
+    } on PlatformException catch (e) {
+      _busy = false;
+      await stop();
+      return 'Camera unavailable: ${e.message ?? e.code}';
+    } on MissingPluginException {
+      return null;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
 
   List<CameraInfo> _cameras = const [];
   String? _cameraId;
@@ -141,13 +196,7 @@ class VideoCall extends ChangeNotifier {
           _fail(e is PlatformException ? (e.message ?? e.code) : '$e');
         },
       );
-      await _method.invokeMethod<void>('start', {
-        'id': id,
-        'width': width,
-        'height': height,
-        'fps': fps,
-        'quality': quality,
-      });
+      await _method.invokeMethod<void>('start', _startArgs(id));
       _cameraId = id;
       _on = true;
       service.setCamera(true);

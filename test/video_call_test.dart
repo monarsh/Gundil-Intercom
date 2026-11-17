@@ -131,6 +131,42 @@ void main() {
     expect(find.text('1.5×'), findsOneWidget);
   });
 
+  test('SD/HD: restarts the capture, the peer keeps the video', () async {
+    final remembered = <bool>[];
+    video.dispose();
+    video = VideoCall(alice, onHdChanged: remembered.add);
+    await call();
+    expect(await video.start(), isNull);
+    var start = calls.lastWhere((c) => c.method == 'start').arguments as Map;
+    expect([start['width'], start['height']], [640, 480]);
+    sink!.success({'jpeg': jpeg, 'rotation': 0, 'mirror': false});
+    await eventually(() => bob.remoteVideo('alice-id') != null);
+
+    calls.clear();
+    expect(await video.setHd(true), isNull);
+    expect(video.hd, isTrue);
+    expect(remembered, [true]);
+    expect(calls.map((c) => c.method), ['stop', 'start']);
+    start = calls.last.arguments as Map;
+    expect([start['width'], start['height']], [1280, 720]);
+    expect(start['quality'], VideoCall.hdQuality);
+    expect(video.on, isTrue);
+    expect(alice.cameraOn, isTrue);
+    // Still streaming: the next picture arrives, no "camera off" between.
+    final hdJpeg = Uint8List.fromList([0xFF, 0xD8, 7, 7, 7, 0xFF, 0xD9]);
+    sink!.success({'jpeg': hdJpeg, 'rotation': 0, 'mirror': false});
+    await eventually(
+      () => bob.remoteVideo('alice-id')?.jpeg.length == hdJpeg.length,
+    );
+
+    // Off: the choice is kept for next time, nothing restarts.
+    await video.stop();
+    calls.clear();
+    await video.setHd(false);
+    expect(calls, isEmpty);
+    expect(remembered, [true, false]);
+  });
+
   test('switch flips front and back', () async {
     await call();
     await video.start();

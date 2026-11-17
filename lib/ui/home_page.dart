@@ -46,8 +46,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   IntercomService get service => widget.service;
 
-  late final VideoCall _video = VideoCall(service)
-    ..onError = (m) => _showMessage(m, error: true);
+  late final VideoCall _video = VideoCall(
+    service,
+    hd: widget.settings.videoHd,
+    onHdChanged: (v) => widget.settings.videoHd = v,
+  )..onError = (m) => _showMessage(m, error: true);
 
   /// The IP camera picture (camera on/off button).
   final CameraViewer _viewer = CameraViewer();

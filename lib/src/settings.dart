@@ -143,6 +143,10 @@ class Settings {
 
   /// Chosen microphone: a device name on desktop, an `AudioInput.key` on
   /// Android; '' = the system's choice.
+  /// Send our camera in HD (1280x720) instead of SD.
+  bool get videoHd => _prefs.getBool('${_p}videoHd') ?? false;
+  set videoHd(bool v) => _prefs.setBool('${_p}videoHd', v);
+
   String get micDevice => _prefs.getString('${_p}micDevice') ?? '';
   set micDevice(String v) => _prefs.setString('${_p}micDevice', v);
 
