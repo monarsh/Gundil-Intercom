@@ -2055,7 +2055,9 @@ class IntercomCore {
             : Frame.empty(MessageType.close),
       );
     }
-    _endConversation(null);
+    // No hang-up beep for our own Cancel / Hang up: only when the other
+    // side ends the call (or it drops) does the beep tell us something.
+    _endConversation(null, tone: false);
   }
 
   void toggleMute() {
@@ -2233,9 +2235,10 @@ class IntercomCore {
     String? reason, {
     IntercomEventKind kind = IntercomEventKind.info,
     String? peerId,
+    bool tone = true,
   }) {
     _stopRinging();
-    if (_audioRunning && rogerBeep) {
+    if (_audioRunning && rogerBeep && tone) {
       // No flushPlayback() here: the native side clears the queue on its next
       // callback, which would wipe the tone just queued with it.
       _playTone(hangupTone(sampleRate));
