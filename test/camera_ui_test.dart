@@ -247,6 +247,45 @@ void main() {
     await tester.pump();
     expect(find.text('Porch'), findsOneWidget);
 
+    // Double tap: 2× on that spot; again: back out.
+    final picture = find.byType(InteractiveViewer);
+    Future<void> doubleTap(Offset at) async {
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    final corner = tester.getTopLeft(picture) + const Offset(100, 150);
+    await doubleTap(corner);
+    expect(find.text('Porch · 2.0×'), findsOneWidget);
+    final m = tester
+        .widget<InteractiveViewer>(picture)
+        .transformationController!
+        .value;
+    // The tapped spot stays where it was.
+    final local = corner - tester.getTopLeft(picture);
+    expect(m.getTranslation().x, closeTo(-local.dx, 0.5));
+    expect(m.getTranslation().y, closeTo(-local.dy, 0.5));
+    await doubleTap(corner);
+    expect(find.text('Porch'), findsOneWidget);
+
+    // Pinch with two fingers zooms too.
+    final c = tester.getCenter(picture);
+    final f1 = await tester.startGesture(c - const Offset(40, 0));
+    final f2 = await tester.startGesture(c + const Offset(40, 0));
+    for (var i = 1; i <= 8; i++) {
+      await f1.moveTo(c - Offset(40.0 + i * 10, 0));
+      await f2.moveTo(c + Offset(40.0 + i * 10, 0));
+      await tester.pump();
+    }
+    await f1.up();
+    await f2.up();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.textContaining('Porch · '), findsOneWidget);
+    await doubleTap(c);
+    expect(find.text('Porch'), findsOneWidget);
+
     // Pan & tilt: arrows appear; a press moves one step.
     expect(find.byTooltip('Pan right'), findsNothing);
     await tester.tap(find.byTooltip('Pan & tilt'));

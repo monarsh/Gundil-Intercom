@@ -54,7 +54,8 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   - Select a camera and press **Turn on camera** to watch it, with or
     without a call (the button is only there for cameras). The picture has
     no sound: call the camera to hear it.
-  - **Zoom** with the 🔍 **+ / −** buttons on the picture, or pinch; drag to
+  - **Zoom** with the 🔍 **+ / −** buttons on the picture, by pinching, or by
+    double-tapping a spot (2× there; double-tap again to zoom out); drag to
     look around while zoomed in (digital zoom, any camera).
   - **Pan & tilt** (Tapo only): the ✥ button on the picture shows arrows;
     press one to turn the camera a step, hold it to keep turning. It uses

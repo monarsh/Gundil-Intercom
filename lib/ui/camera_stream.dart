@@ -72,8 +72,19 @@ class _CameraStageState extends State<CameraStage> {
 
   double get _scale => _zoom.value.getMaxScaleOnAxis();
 
-  /// Zooms by [factor] around the middle of the picture.
-  void _zoomBy(double factor) {
+  Offset? _doubleTapAt;
+
+  /// Double tap: zoom in 2× on that spot, or back out when zoomed in.
+  void _doubleTap() {
+    if (_scale > 1.05) {
+      _zoom.value = Matrix4.identity();
+    } else {
+      _zoomBy(2, around: _doubleTapAt);
+    }
+  }
+
+  /// Zooms by [factor] around [around] (default: the middle of the picture).
+  void _zoomBy(double factor, {Offset? around}) {
     final m = _zoom.value;
     final s = m.getMaxScaleOnAxis();
     final target = (s * factor).clamp(1.0, _maxZoom);
@@ -82,7 +93,8 @@ class _CameraStageState extends State<CameraStage> {
       return;
     }
     final k = target / s;
-    final cx = _size.width / 2, cy = _size.height / 2;
+    final cx = around?.dx ?? _size.width / 2;
+    final cy = around?.dy ?? _size.height / 2;
     _zoom.value = Matrix4.identity()
       ..translateByDouble(cx, cy, 0, 1)
       ..scaleByDouble(k, k, 1, 1)
@@ -206,15 +218,20 @@ class _CameraStageState extends State<CameraStage> {
                       : LayoutBuilder(
                           builder: (context, box) {
                             _size = box.biggest;
-                            return InteractiveViewer(
-                              transformationController: _zoom,
-                              minScale: 1,
-                              maxScale: _maxZoom,
-                              child: SizedBox.fromSize(
-                                size: box.biggest,
-                                child: CameraStream(
-                                  key: ValueKey(url),
-                                  url: url,
+                            return GestureDetector(
+                              onDoubleTapDown: (d) =>
+                                  _doubleTapAt = d.localPosition,
+                              onDoubleTap: _doubleTap,
+                              child: InteractiveViewer(
+                                transformationController: _zoom,
+                                minScale: 1,
+                                maxScale: _maxZoom,
+                                child: SizedBox.fromSize(
+                                  size: box.biggest,
+                                  child: CameraStream(
+                                    key: ValueKey(url),
+                                    url: url,
+                                  ),
                                 ),
                               ),
                             );
