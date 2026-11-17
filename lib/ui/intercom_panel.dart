@@ -64,8 +64,8 @@ class IntercomPanel extends StatelessWidget {
       ? (compact ? 76 : 96) // Video on: leave the room to the pictures.
       : (compact ? 132 : 200);
 
-  /// Connect / Cancel / Hang up: 34% smaller than the base size.
-  double get _callSize => _size * 0.66;
+  /// Connect / Cancel / Hang up: about 30% smaller than the base size.
+  double get _callSize => _size * 0.693;
 
   // ------------------------------------------------------------------ idle
 
