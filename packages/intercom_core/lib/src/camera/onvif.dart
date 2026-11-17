@@ -33,8 +33,6 @@ class OnvifPtz {
   /// Pan/tilt step of one press, in the camera's -1..1 range.
   static const double step = 0.1;
 
-  final HttpClient _http = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 5);
   Duration _clockOffset = Duration.zero;
   String? _ptzUrl, _profile;
   Future<void>? _ready;
@@ -129,17 +127,12 @@ class OnvifPtz {
 
   Future<String> _post(String url, String envelope) async {
     try {
-      final req = await _http.postUrl(Uri.parse(url));
-      req.headers.contentType = ContentType(
-        'application',
-        'soap+xml',
-        charset: 'utf-8',
-      );
-      req.add(utf8.encode(envelope));
-      final res = await req.close().timeout(const Duration(seconds: 8));
-      final text = await utf8.decodeStream(res);
-      if (res.statusCode == 200) return text;
-      if (res.statusCode == 401 ||
+      final (status, text) = await _send(
+        Uri.parse(url),
+        utf8.encode(envelope),
+      ).timeout(const Duration(seconds: 8));
+      if (status == 200) return text;
+      if (status == 401 ||
           text.contains('NotAuthorized') ||
           text.contains('FailedAuthentication')) {
         throw OnvifException('The camera refused the camera account');
@@ -147,7 +140,7 @@ class OnvifPtz {
       final reason =
           _between(text, '<env:Text', '</env:Text>') ??
           _between(text, '<SOAP-ENV:Text', '</SOAP-ENV:Text>') ??
-          'HTTP ${res.statusCode}';
+          'HTTP $status';
       throw OnvifException(
         'The camera refused: ${reason.replaceFirst(RegExp(r'^[^>]*>'), '')}',
       );
@@ -157,9 +150,102 @@ class OnvifPtz {
       throw OnvifException('The camera did not answer');
     } on SocketException catch (e) {
       throw OnvifException(e.osError?.message ?? e.message);
-    } on HttpException catch (e) {
-      throw OnvifException(e.message);
+    } on FormatException {
+      throw OnvifException('The camera sent an answer the app can\'t read');
     }
+  }
+
+  /// One HTTP POST, written by hand: a fixed Content-Length (the camera's
+  /// small web server hangs up on a chunked request, which is what Dart's
+  /// HttpClient sends) and Connection: close, so the answer ends when the
+  /// camera closes the connection.
+  static Future<(int, String)> _send(Uri uri, List<int> body) async {
+    final socket = await Socket.connect(
+      uri.host,
+      uri.hasPort ? uri.port : 80,
+      timeout: const Duration(seconds: 5),
+    );
+    try {
+      final path = uri.path.isEmpty ? '/' : uri.path;
+      final query = uri.hasQuery ? '?${uri.query}' : '';
+      socket.add(
+        latin1.encode(
+          'POST $path$query HTTP/1.1\r\n'
+          'Host: ${uri.host}:${uri.hasPort ? uri.port : 80}\r\n'
+          'Content-Type: application/soap+xml; charset=utf-8\r\n'
+          'Content-Length: ${body.length}\r\n'
+          'Connection: close\r\n\r\n',
+        ),
+      );
+      socket.add(body);
+      await socket.flush();
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in socket) {
+        bytes.add(chunk);
+      }
+      return _parseResponse(bytes.takeBytes());
+    } finally {
+      socket.destroy();
+    }
+  }
+
+  static (int, String) _parseResponse(Uint8List data) {
+    var end = -1;
+    for (var i = 0; i + 3 < data.length; i++) {
+      if (data[i] == 13 &&
+          data[i + 1] == 10 &&
+          data[i + 2] == 13 &&
+          data[i + 3] == 10) {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0) {
+      throw const SocketException('The camera closed the connection');
+    }
+    final head = latin1.decode(data.sublist(0, end)).split('\r\n');
+    final status = int.tryParse(head.first.split(' ').elementAtOrNull(1) ?? '');
+    if (status == null) throw const FormatException('not HTTP');
+    final headers = {
+      for (final h in head.skip(1))
+        if (h.contains(':'))
+          h.substring(0, h.indexOf(':')).trim().toLowerCase(): h
+              .substring(h.indexOf(':') + 1)
+              .trim(),
+    };
+    var body = Uint8List.sublistView(data, end + 4);
+    if ((headers['transfer-encoding'] ?? '').toLowerCase().contains(
+      'chunked',
+    )) {
+      body = _dechunk(body);
+    } else {
+      final n = int.tryParse(headers['content-length'] ?? '');
+      if (n != null && n < body.length) {
+        body = Uint8List.sublistView(body, 0, n);
+      }
+    }
+    return (status, utf8.decode(body, allowMalformed: true));
+  }
+
+  static Uint8List _dechunk(Uint8List data) {
+    final out = BytesBuilder(copy: false);
+    var i = 0;
+    while (i < data.length) {
+      var j = i;
+      while (j + 1 < data.length && !(data[j] == 13 && data[j + 1] == 10)) {
+        j++;
+      }
+      final size = int.tryParse(
+        latin1.decode(data.sublist(i, j)).split(';').first.trim(),
+        radix: 16,
+      );
+      if (size == null || size == 0) break;
+      final start = j + 2;
+      final stop = (start + size).clamp(0, data.length);
+      out.add(Uint8List.sublistView(data, start, stop));
+      i = stop + 2;
+    }
+    return out.takeBytes();
   }
 
   String _envelope(String body, {bool secure = true}) =>
@@ -209,5 +295,6 @@ class OnvifPtz {
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
 
-  void close() => _http.close(force: true);
+  /// Nothing stays open between moves; kept for symmetry with the rest.
+  void close() {}
 }

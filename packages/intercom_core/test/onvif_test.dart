@@ -24,6 +24,12 @@ class FakeOnvif {
       RegExp('<(?:\\w+:)?$name(?:\\s[^>]*)?>([^<]*)<').firstMatch(xml)?[1];
 
   Future<void> _serve(HttpRequest req) async {
+    // Like a Tapo: a request without a length gets the line hung up.
+    if (req.headers.chunkedTransferEncoding || req.contentLength <= 0) {
+      final s = await req.response.detachSocket(writeHeaders: false);
+      s.destroy();
+      return;
+    }
     final body = await utf8.decodeStream(req);
     final res = req.response
       ..headers.contentType = ContentType.parse('application/soap+xml');
