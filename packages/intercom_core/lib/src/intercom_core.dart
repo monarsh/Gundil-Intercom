@@ -1176,50 +1176,71 @@ class IntercomCore {
     }
   }
 
-  /// Opens the audio connection with camera [id] for [conv].
+  /// How long a call keeps trying a camera that refuses the connection. A
+  /// Tapo refuses new connections for a few seconds after a call with it
+  /// ended (it's still closing the old one).
+  static const Duration cameraBusyRetry = Duration(seconds: 15);
+
+  /// Opens the audio connection with camera [id] for [conv]. A camera that
+  /// refuses (busy) is tried again every second for [cameraBusyRetry].
   Future<void> _callCamera(Conversation conv, String id) async {
     final cam = _cameras[id];
     if (cam == null) return;
-    late final CameraSession session;
-    session = CameraSession(
-      cam,
-      onAudio: (pcm) {
-        if (identical(_cameraSessions[id], session)) {
-          _onAudio(id, pcmToBytes(pcm));
+    final giveUp = DateTime.now().add(cameraBusyRetry);
+    bool stillCalling() =>
+        identical(_conversation, conv) &&
+        conv.members[id] == MemberState.calling;
+    while (true) {
+      late final CameraSession session;
+      session = CameraSession(
+        cam,
+        onAudio: (pcm) {
+          if (identical(_cameraSessions[id], session)) {
+            _onAudio(id, pcmToBytes(pcm));
+          }
+        },
+        onClosed: (_) {
+          if (identical(_cameraSessions[id], session)) {
+            _removeMember(id, reason: 'Lost connection to ${cam.name}');
+          }
+        },
+      );
+      _cameraSessions[id] = session;
+      try {
+        final status = await session.start();
+        if (!identical(_cameraSessions[id], session)) return; // Hung up.
+        if (!stillCalling()) {
+          _cameraSessions.remove(id);
+          session.close();
+          return;
         }
-      },
-      onClosed: (_) {
-        if (identical(_cameraSessions[id], session)) {
-          _removeMember(id, reason: 'Lost connection to ${cam.name}');
+        _peers[id]?.reachable = true; // Stays online after hanging up.
+        _cameraMisses.remove(id);
+        _setConnected(id);
+        if (!status.talk) {
+          _emit('${cam.name}: ${status.summary}', error: true);
         }
-      },
-    );
-    _cameraSessions[id] = session;
-    try {
-      final status = await session.start();
-      if (!identical(_cameraSessions[id], session)) return; // Hung up.
-      if (!identical(_conversation, conv) ||
-          conv.members[id] != MemberState.calling) {
+        return;
+      } catch (e) {
+        if (!identical(_cameraSessions[id], session)) return;
         _cameraSessions.remove(id);
         session.close();
-        return;
-      }
-      _peers[id]?.reachable = true; // Stays online after hanging up.
-      _cameraMisses.remove(id);
-      _setConnected(id);
-      if (!status.talk) {
-        _emit('${cam.name}: ${status.summary}', error: true);
-      }
-    } catch (e) {
-      if (!identical(_cameraSessions[id], session)) return;
-      _cameraSessions.remove(id);
-      session.close();
-      if (identical(_conversation, conv)) {
+        if (!stillCalling()) return;
+        if (_cameraRefused(e) && DateTime.now().isBefore(giveUp)) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          if (!stillCalling() || _cameraSessions.containsKey(id)) return;
+          continue;
+        }
         _emit('Could not reach ${cam.name}: ${_short(e)}', error: true);
         _removeMember(id);
+        return;
       }
     }
   }
+
+  /// The camera refused the connection (busy), whatever wrapped the error.
+  static bool _cameraRefused(Object e) =>
+      e.toString().toLowerCase().contains('connection refused');
 
   // ---------------------------------------------------------------- groups
 
@@ -2215,10 +2236,8 @@ class IntercomCore {
   }) {
     _stopRinging();
     if (_audioRunning && rogerBeep) {
-      // Drop the voice still queued, so the tone starts at once and whole.
-      try {
-        audio.flushPlayback();
-      } catch (_) {}
+      // No flushPlayback() here: the native side clears the queue on its next
+      // callback, which would wipe the tone just queued with it.
       _playTone(hangupTone(sampleRate));
       _stopAudioWhenPlayed();
     } else {

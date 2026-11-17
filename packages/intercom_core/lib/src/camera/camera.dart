@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'g711.dart';
@@ -201,9 +202,12 @@ class CameraSession {
     );
   }
 
-  static String _text(Object e) => e is TimeoutException
-      ? 'the camera did not answer'
-      : e.toString().replaceFirst('SocketException: ', '');
+  static String _text(Object e) => switch (e) {
+    TimeoutException() => 'the camera did not answer',
+    // Not the full text: it ends with our own (local) port, which confuses.
+    SocketException(:final osError?) => osError.message,
+    _ => e.toString().replaceFirst('SocketException: ', ''),
+  };
 
   /// Plays 16 kHz PCM through the camera's speaker (if it can talk).
   void sendAudio(Int16List pcm16k) {

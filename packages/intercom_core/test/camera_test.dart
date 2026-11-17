@@ -35,8 +35,9 @@ class FakeTapo {
   static Future<FakeTapo> start(
     String cloudPassword, {
     bool sha256 = false,
+    int port = 0,
   }) async => FakeTapo._(
-    await ServerSocket.bind(InternetAddress.loopbackIPv4, 0),
+    await ServerSocket.bind(InternetAddress.loopbackIPv4, port),
     cloudPassword,
     sha256,
   );
@@ -483,6 +484,47 @@ void main() {
       core.removePeer(core.entries.single);
       expect(core.entries, isEmpty);
       expect(stored, isEmpty);
+    });
+
+    test('a busy camera that refuses is tried again', () async {
+      final core = IntercomCore(
+        selfId: 'me',
+        name: 'Me',
+        audio: FakeAudioEngine(),
+        preferredPort: 0,
+        enableDiscovery: false,
+        rogerBeep: false,
+      );
+      await core.start();
+      addTearDown(core.shutdown);
+      final port = tapo.port;
+      final c = core.saveCamera(
+        name: 'Porch',
+        host: '127.0.0.1',
+        cloudPassword: 'hunter2',
+        port: port,
+      );
+      await eventually(() => core.peer(c.peerId)?.online ?? false);
+      // Busy: every connection is refused for a while.
+      await tapo.close();
+      final events = <String>[];
+      core.events.listen((e) => events.add(e.message));
+      final call = core.connect(PeerTarget(c.peerId));
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+      expect(
+        core.conversation?.members[c.peerId],
+        MemberState.calling,
+        reason: '$events',
+      );
+      // The camera is free again.
+      tapo = await FakeTapo.start('hunter2', port: port);
+      await eventually(
+        () => core.conversation?.isConnected ?? false,
+        timeout: const Duration(seconds: 8),
+      );
+      await call;
+      expect(events.where((m) => m.contains('Could not reach')), isEmpty);
+      core.hangUp();
     });
   });
 }
