@@ -4,6 +4,7 @@ library;
 export 'src/audio_engine.dart';
 export 'src/camera/camera.dart';
 export 'src/camera/onvif.dart';
+export 'src/contacts_backup.dart';
 export 'src/discovery.dart';
 export 'src/echo_suppressor.dart';
 export 'src/mixer.dart';

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'audio_engine.dart';
 import 'camera/camera.dart';
+import 'contacts_backup.dart';
 import 'discovery.dart';
 import 'echo_suppressor.dart';
 import 'mixer.dart';
@@ -14,6 +15,7 @@ import 'models.dart';
 import 'peer_connection.dart';
 import 'protocol.dart';
 import 'secure_channel.dart';
+import 'version.dart';
 
 /// Notification for the UI (errors and short info messages).
 class IntercomEvent {
@@ -1132,6 +1134,115 @@ class IntercomCore {
     } finally {
       session.close();
     }
+  }
+
+  // ---------------------------------------------------------------- backup
+
+  /// The peers and cameras lists as a backup file (JSON), to keep or to
+  /// load on another device with [importContacts]. [passwords]: include the
+  /// cameras' passwords (anyone with the file can then see the cameras).
+  String exportContacts({bool passwords = true}) {
+    Map<String, Object?> camera(SavedCamera c) {
+      final j = c.toJson()..remove('key');
+      if (!passwords) {
+        j
+          ..remove('cloudPassword')
+          ..remove('rtspPassword');
+      }
+      return j;
+    }
+
+    return const JsonEncoder.withIndent('  ').convert({
+      'format': contactsFormat,
+      'version': 1,
+      'app': appVersion,
+      'from': _name,
+      'exported': DateTime.now().toUtc().toIso8601String(),
+      'passwords': passwords,
+      'peers': [for (final s in _saved) s.toJson()..remove('key')],
+      'cameras': [for (final c in _cameras.values) camera(c)],
+    });
+  }
+
+  /// Adds the peers and cameras of a backup file made by [exportContacts].
+  /// Entries already in the list (and this device itself) are left as they
+  /// are. Throws [FormatException] when [text] isn't such a file.
+  ContactsImport importContacts(String text) {
+    Object? json;
+    try {
+      json = jsonDecode(text.trim());
+    } on FormatException {
+      json = null;
+    }
+    if (json is! Map || json['format'] != contactsFormat) {
+      throw const FormatException(
+        'This is not a Gundil Intercom peers and cameras list',
+      );
+    }
+    final version = json['version'];
+    if (version is int && version > 1) {
+      throw const FormatException(
+        'This list was made by a newer version of the app: update it first',
+      );
+    }
+    var peers = 0, cams = 0, skipped = 0, noLogin = 0;
+    final added = <SavedPeer>[];
+    for (final raw in json['peers'] is List ? json['peers'] as List : []) {
+      if (raw is! Map) continue;
+      final s = SavedPeer.fromJson({...raw, 'key': _newKey()});
+      if (s == null || s.host.trim().isEmpty) continue;
+      final id = s.peerId;
+      if (id == selfId ||
+          _saved.any(
+            (o) =>
+                (id != null && o.peerId == id) ||
+                (o.host == s.host && o.port == s.port),
+          )) {
+        skipped++;
+        continue;
+      }
+      _saved.add(s);
+      added.add(s);
+      peers++;
+    }
+    for (final raw in json['cameras'] is List ? json['cameras'] as List : []) {
+      if (raw is! Map) continue;
+      final c = SavedCamera.fromJson({...raw, 'key': _newKey()});
+      if (c == null || c.host.trim().isEmpty) continue;
+      final same = _cameras.values.any(
+        (o) =>
+            o.kind == c.kind &&
+            o.host == c.host &&
+            (c.isTapo ||
+                (o.rtspPort == c.rtspPort && o.rtspPath == c.rtspPath)),
+      );
+      if (same) {
+        skipped++;
+        continue;
+      }
+      _cameras[c.peerId] = c;
+      _cameraPeer(c);
+      cams++;
+      final login = c.isTapo
+          ? c.cloudPassword.isNotEmpty || c.rtspPassword.isNotEmpty
+          : c.rtspUser.isEmpty || c.rtspPassword.isNotEmpty;
+      if (!login) noLogin++;
+    }
+    if (peers > 0) _savedChanged();
+    if (cams > 0) {
+      onCamerasChanged?.call(cameras);
+      _probeCameras();
+    }
+    for (final s in added) {
+      _tryConnectSaved(s);
+    }
+    changed();
+    return ContactsImport(
+      peersAdded: peers,
+      camerasAdded: cams,
+      skipped: skipped,
+      camerasWithoutLogin: noLogin,
+    );
   }
 
   /// Makes (or updates) the list entry of [cam].

@@ -63,6 +63,11 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
     **SD/HD** switch on the picture.
   - The **Test** button in the dialog says what works. The headless Pi node
     keeps cameras for calls, but shows no pictures.
+- **Export / import the list**: ⋮ → **Export list** saves the peers and
+  cameras to a JSON file (or copies it); ⋮ → **Import list** adds them on
+  another device (Android, Windows or Linux), keeping what's already there.
+  Camera passwords are included unless you untick *Include camera
+  passwords*, so keep the file private.
 - **Choose the microphone and sound output** (*Settings*): on Android the
   built-in microphone, a wired 3.5 mm headset, a USB microphone or a
   Bluetooth headset; on Windows, Mac and Linux any microphone and sound

@@ -12,6 +12,7 @@ import '../src/video_call.dart';
 import '../src/window_bridge.dart';
 import 'intercom_panel.dart';
 import 'audio_device_picker.dart';
+import 'backup_dialog.dart';
 import 'camera_stream.dart';
 import 'peer_dialog.dart';
 import 'contacts_pane.dart';
@@ -475,6 +476,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     tooltip: 'Settings',
                     onPressed: _settingsDialog,
                     icon: const Icon(Icons.settings),
+                  ),
+                  PopupMenuButton<void Function()>(
+                    tooltip: 'More',
+                    onSelected: (action) => action(),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: () => BackupDialogs.export(context, service),
+                        child: const ListTile(
+                          leading: Icon(Icons.upload_file),
+                          title: Text('Export list'),
+                          subtitle: Text('Save peers and cameras to a file'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: () => BackupDialogs.import(context, service),
+                        child: const ListTile(
+                          leading: Icon(Icons.download),
+                          title: Text('Import list'),
+                          subtitle: Text('Add peers and cameras from a file'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
