@@ -534,12 +534,12 @@ void main() {
       );
     });
 
-    test('a discovered peer can be kept and renamed', () async {
+    test('a discovered peer is kept and can be renamed', () async {
       // Bob only knows Alice because she connected to him.
       await eventually(() => bob.entries.any((e) => e.peerId == 'alice-id'));
       final e = bob.entries.firstWhere((e) => e.peerId == 'alice-id');
-      expect(e.isSaved, isFalse);
-      bob.saveLivePeer('alice-id', label: 'Boss');
+      expect(e.isSaved, isTrue);
+      await bob.updateSavedPeer(e.saved!.key, label: 'Boss');
       final saved = bob.entries.firstWhere((e) => e.peerId == 'alice-id');
       expect(saved.isSaved, isTrue);
       expect(saved.name, 'Boss');

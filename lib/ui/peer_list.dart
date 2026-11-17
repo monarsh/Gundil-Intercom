@@ -6,15 +6,15 @@ import 'group_dialog.dart';
 import 'peer_dialog.dart';
 import 'widgets.dart';
 
-enum _PeerAction { edit, save, remove }
+enum _PeerAction { edit, remove }
 
 enum _GroupAction { edit, leave }
 
 /// Channel selector: "Everyone" plus every known peer. The selected entry is
 /// who CONNECT opens a two-way line with; tapping another one switches.
 ///
-/// Saved peers (bookmark icon) stay in the list across restarts, even when
-/// offline. Every peer has a ⋮ menu to edit, save or remove it (online or
+/// Every peer that has been seen stays in the list across restarts, even
+/// when offline. Every peer has a ⋮ menu to edit or remove it (online or
 /// offline).
 class PeerList extends StatelessWidget {
   const PeerList({super.key, required this.service, required this.onAddPeer});
@@ -250,10 +250,6 @@ class PeerList extends StatelessWidget {
               style: TextStyle(color: muted),
             ),
           ),
-          if (e.isSaved) ...[
-            const SizedBox(width: 6),
-            Icon(Icons.bookmark, size: 14, color: muted ?? scheme.primary),
-          ],
         ],
       ),
       subtitle: Row(
@@ -324,7 +320,6 @@ class PeerList extends StatelessWidget {
       icon: const Icon(Icons.more_vert),
       onSelected: (a) => switch (a) {
         _PeerAction.edit => _edit(context, e),
-        _PeerAction.save => _save(context, e),
         _PeerAction.remove => _remove(context, e),
       },
       itemBuilder: (_) => [
@@ -335,14 +330,6 @@ class PeerList extends StatelessWidget {
             title: const Text('Edit…'),
           ),
         ),
-        if (!e.isSaved && e.platform != 'camera')
-          const PopupMenuItem(
-            value: _PeerAction.save,
-            child: ListTile(
-              leading: Icon(Icons.bookmark_add),
-              title: Text('Keep in list'),
-            ),
-          ),
         const PopupMenuItem(
           value: _PeerAction.remove,
           child: ListTile(
@@ -412,11 +399,6 @@ class PeerList extends StatelessWidget {
     } on ArgumentError catch (err) {
       if (context.mounted) _snack(context, '${err.message}', error: true);
     }
-  }
-
-  void _save(BuildContext context, PeerEntry e) {
-    service.saveLivePeer(e.live!.id);
-    _snack(context, '${e.name} will stay in the list');
   }
 
   Future<void> _remove(BuildContext context, PeerEntry e) async {

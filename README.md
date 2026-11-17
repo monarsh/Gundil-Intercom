@@ -112,12 +112,12 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   keeps running in the tray. Use the tray icon to open it again or *Exit*.
   It shows who you're connected with, and a notification appears when a
   line opens while the window is hidden.
-- **Saved peers**: add a peer by IP (or keep a discovered one) and it stays in
-  the list across restarts, greyed out while offline. The app keeps retrying
-  in the background, so a saved peer comes online automatically. This also
-  works on networks that block broadcast.
+- **Peers stay in the list**: every peer that's been discovered or added by IP
+  stays in the list across restarts, greyed out while offline, until you
+  remove it. The app keeps retrying in the background, so a peer comes online
+  automatically. This also works on networks that block broadcast.
 - **Edit peers**: every peer has a ⋮ menu (or long-press) to rename it, change
-  its IP/port, keep it in the list, or remove it. If a saved device gets a new
+  its IP/port, or remove it. If a saved device gets a new
   IP, the saved address updates itself once the device is seen again.
 
 ## Orange Pi PC / Raspberry Pi (headless node)
@@ -286,11 +286,11 @@ portable Windows folder, Android APKs, and the headless node for 32-bit and
    it; otherwise `sudo usermod -aG video $USER` and log in again).
 4. Press **HANG UP** (either side) to end it. **Mute** turns your
    microphone off without hanging up.
-5. If a peer doesn't appear, press **+ Add** (or the 🔗 icon) and enter the IP
+5. If a peer doesn't appear, press **+ Add peer** (or the 🔗 icon) and enter the IP
    address shown in that device's *Settings*. A peer you add stays in the list
    until you remove it, even after the app restarts.
-6. Use a peer's **⋮** menu to **Edit** it (name, IP, port), **Rename** a
-   discovered peer, **Keep in list**, or **Remove** it.
+6. Use a peer's **⋮** menu to **Edit** it (name, IP, port) or **Remove** it.
+   Discovered peers stay in the list on their own.
 
 ### Windows system tray
 

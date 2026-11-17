@@ -66,13 +66,14 @@ void main() {
     expect(alice.peer('bob-id')?.online, isTrue);
   });
 
-  test('a discovered peer can be kept with an alternate address', () async {
+  test('a discovered peer can be given an alternate address', () async {
     expect(
       await bob.addSavedPeer(host: '127.0.0.1', port: alice.listenPort!),
       isTrue,
     );
     await eventually(() => alice.peer('bob-id')?.online ?? false);
-    final s = alice.saveLivePeer('bob-id', altHost: '10.9.8.7');
+    final s = alice.savedPeers.singleWhere((s) => s.peerId == 'bob-id');
+    expect(await alice.updateSavedPeer(s.key, altHost: '10.9.8.7'), isTrue);
     expect(s.altHost, '10.9.8.7');
     expect(s.hosts, ['127.0.0.1', '10.9.8.7']);
   });

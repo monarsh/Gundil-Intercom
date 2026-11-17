@@ -948,7 +948,8 @@ class IntercomCore {
     return _tryConnectSaved(s);
   }
 
-  /// Saves a discovered peer (e.g. to give it a custom name).
+  /// Saves a discovered peer (e.g. to give it a custom name). Peers are
+  /// normally kept automatically once seen.
   SavedPeer saveLivePeer(
     String peerId, {
     String label = '',
@@ -1027,7 +1028,7 @@ class IntercomCore {
   /// Removes [entry] from the list, whether it's online or offline: it's
   /// unsaved, any call with it ends and its connections close. Nothing is
   /// blocked: if it's still on the network (discovery) or connects again,
-  /// it shows up again as a new, unsaved peer.
+  /// it shows up again as a new peer.
   void removePeer(PeerEntry entry) {
     final id = entry.peerId;
     if (id != null && _cameras.containsKey(id)) {
@@ -1654,6 +1655,26 @@ class IntercomCore {
         s.port = p.port;
         updated = true;
       }
+    }
+    // Every intercom we've seen stays in the list (until the user removes
+    // it), so it survives a restart and is retried by address even where
+    // discovery doesn't reach.
+    if (!_cameras.containsKey(p.id) &&
+        !_saved.any(
+          (s) =>
+              s.peerId == p.id ||
+              (s.host == p.address.address && s.port == p.port),
+        )) {
+      _saved.add(
+        SavedPeer(
+          key: _newKey(),
+          host: p.address.address,
+          port: p.port,
+          peerId: p.id,
+          platform: p.platform,
+        ),
+      );
+      updated = true;
     }
     if (updated) _savedChanged();
   }

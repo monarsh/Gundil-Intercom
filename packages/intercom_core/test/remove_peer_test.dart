@@ -55,15 +55,18 @@ void main() {
     alice.removePeer(entryOf(alice, 'bob-id'));
     expect(alice.entries, isEmpty);
 
+    // Bob kept Alice when she connected; he dials her again.
+    await eventually(() => !entryOf(bob, 'alice-id').online);
+    bob.removePeer(entryOf(bob, 'alice-id'));
     expect(
       await bob.addSavedPeer(host: '127.0.0.1', port: alice.listenPort!),
       isTrue,
     );
     await eventually(() => alice.peer('bob-id')?.online ?? false);
-    expect(entryOf(alice, 'bob-id').isSaved, isFalse);
+    expect(entryOf(alice, 'bob-id').isSaved, isTrue, reason: 'kept again');
   });
 
-  test('an online peer that was not saved can be removed', () async {
+  test('a peer that connects to us is kept, and can be removed', () async {
     // Bob knows Alice; Alice only learns Bob from his connection.
     expect(
       await bob.addSavedPeer(host: '127.0.0.1', port: alice.listenPort!),
@@ -71,9 +74,11 @@ void main() {
     );
     await eventually(() => alice.peer('bob-id')?.online ?? false);
     final e = entryOf(alice, 'bob-id');
-    expect(e.isSaved, isFalse);
+    expect(e.isSaved, isTrue);
+    expect(alice.savedPeers.single.port, bob.listenPort);
     alice.removePeer(e);
     expect(alice.peer('bob-id'), isNull);
+    expect(alice.savedPeers, isEmpty);
   });
 
   test('an offline peer can be removed', () async {
