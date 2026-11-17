@@ -118,6 +118,8 @@ class _CameraStageState extends State<CameraStage> {
             host: cam.host,
             username: cam.rtspUser,
             password: cam.rtspPassword,
+            // Tapo: ONVIF's right is the camera's left.
+            reversePan: cam.isTapo,
           );
           _ptzFor = cam.peerId;
         }

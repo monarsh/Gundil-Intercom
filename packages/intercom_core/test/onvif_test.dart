@@ -122,18 +122,28 @@ void main() {
   setUp(() async => cam = await FakeOnvif.start());
   tearDown(() => cam.server.close(force: true));
 
-  OnvifPtz ptz({String password = 'secret'}) => OnvifPtz(
-    host: '127.0.0.1',
-    port: cam.port,
-    username: 'cam',
-    password: password,
-  );
+  OnvifPtz ptz({String password = 'secret', bool reversePan = false}) =>
+      OnvifPtz(
+        host: '127.0.0.1',
+        port: cam.port,
+        username: 'cam',
+        password: password,
+        reversePan: reversePan,
+      );
 
   test('pans and tilts one step at a time', () async {
     final p = ptz();
     await p.move(1, 0);
     await p.move(0, -1);
     expect(cam.moves, ['rel 0.1 0.0', 'rel 0.0 -0.1']);
+    p.close();
+  });
+
+  test('right and left can be swapped (Tapo)', () async {
+    final p = ptz(reversePan: true);
+    await p.move(1, 0);
+    await p.move(-1, 1);
+    expect(cam.moves, ['rel -0.1 0.0', 'rel 0.1 0.1']);
     p.close();
   });
 

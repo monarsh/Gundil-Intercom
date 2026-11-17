@@ -24,11 +24,16 @@ class OnvifPtz {
     this.port = 2020,
     required this.username,
     required this.password,
+    this.reversePan = false,
   });
 
   final String host;
   final int port;
   final String username, password;
+
+  /// The camera turns the other way than ONVIF says for pan (Tapo C200
+  /// family: a positive x turns it left), so right/left are swapped.
+  final bool reversePan;
 
   /// Pan/tilt step of one press, in the camera's -1..1 range.
   static const double step = 0.1;
@@ -45,6 +50,7 @@ class OnvifPtz {
   /// Moves the camera one step: [x] right (+) / left (-), [y] up (+) /
   /// down (-), each -1, 0 or 1.
   Future<void> move(int x, int y) async {
+    if (reversePan) x = -x;
     await (_ready ??= _connect().catchError((Object e) {
       _ready = null;
       throw e;
