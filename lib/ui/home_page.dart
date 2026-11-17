@@ -467,11 +467,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                 ),
                 actions: [
-                  IconButton(
-                    tooltip: 'Add peer by IP',
-                    onPressed: _addPeerDialog,
-                    icon: const Icon(Icons.add_link),
-                  ),
                   ListenableBuilder(
                     listenable: service,
                     builder: (context, _) => IconButton(

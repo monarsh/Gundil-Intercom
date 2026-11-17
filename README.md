@@ -313,7 +313,7 @@ portable Windows folder, Android APKs, and the headless node for 32-bit and
    it; otherwise `sudo usermod -aG video $USER` and log in again).
 4. Press **HANG UP** (either side) to end it. **Mute** turns your
    microphone off without hanging up.
-5. If a peer doesn't appear, press **+ Add peer** (or the 🔗 icon) and enter the IP
+5. If a peer doesn't appear, press **+ Add peer** in the *Peers* tab and enter the IP
    address shown in that device's *Settings*. A peer you add stays in the list
    until you remove it, even after the app restarts.
 6. Use a peer's **⋮** menu to **Edit** it (name, IP, port) or **Remove** it.
