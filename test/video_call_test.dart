@@ -1,7 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p_intercom/src/intercom_service.dart';
 import 'package:p2p_intercom/src/video_call.dart';
+import 'package:p2p_intercom/ui/video_view.dart';
+import 'package:p2p_intercom/ui/zoomable.dart';
 
 Future<void> eventually(bool Function() condition) async {
   final end = DateTime.now().add(const Duration(seconds: 5));
@@ -102,6 +105,30 @@ void main() {
     expect(video.mirror, isTrue);
     await eventually(() => bob.remoteVideo('alice-id') != null);
     expect(bob.remoteVideo('alice-id')!.jpeg, jpeg);
+  });
+
+  testWidgets('a peer\'s video tile can be zoomed', (tester) async {
+    await tester.runAsync(() async {
+      await call();
+      alice.setCamera(true);
+      alice.sendVideoFrame(jpeg, rotation: 0);
+      await eventually(() => bob.remoteVideo('alice-id') != null);
+    });
+    final bobVideo = VideoCall(bob);
+    addTearDown(bobVideo.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VideoStage(service: bob, video: bobVideo),
+        ),
+      ),
+    );
+    expect(find.byType(ZoomableView), findsOneWidget);
+    expect(find.byTooltip('Zoom in'), findsOneWidget);
+    expect(find.byTooltip('Zoom out'), findsOneWidget);
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pump();
+    expect(find.text('1.5×'), findsOneWidget);
   });
 
   test('switch flips front and back', () async {

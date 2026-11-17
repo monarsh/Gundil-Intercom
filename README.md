@@ -93,6 +93,8 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   every member, and the members see the caller. Your own picture shows as a small self-view. Video
   adapts to the network: pictures are dropped rather than delaying the
   audio. On Android the camera pauses while the app is in the background.
+  Each peer's video can be zoomed (up to 3×): zoom buttons on the tile,
+  pinch, double-tap a spot, and drag while zoomed in.
 - **Encrypted calls**: every connection between intercoms is end-to-end
   encrypted (X25519 key exchange, ChaCha20-Poly1305), audio and video
   included, so nobody else on the network can listen in. The call screen

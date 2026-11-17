@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../src/intercom_service.dart';
 import '../src/video_call.dart';
+import 'zoomable.dart';
 
 /// The video area of a call: every peer whose camera is on, plus a small
 /// self-view while our own camera is on. With no remote video, the
@@ -55,7 +56,12 @@ class VideoStage extends StatelessWidget {
         _Tile(
           name: service.displayName(id),
           speaking: service.isSpeaking(id),
-          child: _RemoteView(service: service, peerId: id),
+          // Zoom: buttons, pinch, double-tap. Peer video is about 640×480,
+          // so more than 3× only gets blurry.
+          child: ZoomableView(
+            key: ValueKey(id),
+            child: _RemoteView(service: service, peerId: id),
+          ),
         ),
     ];
     if (tiles.length == 1) return tiles.single;
