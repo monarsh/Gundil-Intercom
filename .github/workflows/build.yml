@@ -266,9 +266,9 @@ jobs:
           V="${TAG#v}"
           mkdir -p dist
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            cp "apk/app-$abi-release.apk" "dist/GundilIntercom-$V-android-$abi.apk"
+            cp "apk/app-$abi-release.apk" "dist/Gundil_Intercom-$V-android-$abi.apk"
           done
-          cp apk/app-release.apk "dist/GundilIntercom-$V-android-universal.apk"
+          cp apk/app-release.apk "dist/Gundil_Intercom-$V-android-universal.apk"
           (cd dist && sha256sum * > SHA256SUMS.txt)
           if [ -f ".github/release/changelog/$TAG.md" ]; then
             cp ".github/release/changelog/$TAG.md" notes.md
@@ -309,20 +309,20 @@ jobs:
           V="${TAG#v}"
           mkdir -p dist
           A=artifacts
-          cp "$A"/gundil-intercom-windows-setup/*.exe "dist/GundilIntercom-$V-windows-x64-setup.exe"
-          (cd "$A/gundil-intercom-windows-x64-portable" && zip -qr "$GITHUB_WORKSPACE/dist/GundilIntercom-$V-windows-x64-portable.zip" .)
+          cp "$A"/gundil-intercom-windows-setup/*.exe "dist/Gundil_Intercom-$V-windows-x64-setup.exe"
+          (cd "$A/gundil-intercom-windows-x64-portable" && zip -qr "$GITHUB_WORKSPACE/dist/Gundil_Intercom-$V-windows-x64-portable.zip" .)
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            cp "$A/gundil-intercom-android/app-$abi-release.apk" "dist/GundilIntercom-$V-android-$abi.apk"
+            cp "$A/gundil-intercom-android/app-$abi-release.apk" "dist/Gundil_Intercom-$V-android-$abi.apk"
           done
-          cp "$A/gundil-intercom-android/app-release.apk" "dist/GundilIntercom-$V-android-universal.apk"
-          cp "$A"/gundil-intercom-appimage-x86_64/*.AppImage "dist/GundilIntercom-$V-x86_64.AppImage"
-          cp "$A"/gundil-intercom-appimage-aarch64/*.AppImage "dist/GundilIntercom-$V-aarch64.AppImage"
-          cp "$A/gundil-intercom-linux-x64/gundil-intercom-linux-x64.tar.gz" "dist/GundilIntercom-$V-linux-x64.tar.gz"
-          cp "$A/gundil-intercom-linux-arm64/gundil-intercom-linux-arm64.tar.gz" "dist/GundilIntercom-$V-linux-arm64.tar.gz"
+          cp "$A/gundil-intercom-android/app-release.apk" "dist/Gundil_Intercom-$V-android-universal.apk"
+          cp "$A"/gundil-intercom-appimage-x86_64/*.AppImage "dist/gundil-intercom-$V-x86_64.AppImage"
+          cp "$A"/gundil-intercom-appimage-aarch64/*.AppImage "dist/gundil-intercom-$V-aarch64.AppImage"
+          cp "$A/gundil-intercom-linux-x64/gundil-intercom-linux-x64.tar.gz" "dist/gundil-intercom-$V-linux-x64.tar.gz"
+          cp "$A/gundil-intercom-linux-arm64/gundil-intercom-linux-arm64.tar.gz" "dist/gundil-intercom-$V-linux-arm64.tar.gz"
           cp "$A/gundil-intercom-node-linux-arm/gundil-intercom-node-linux-arm.tar.gz" "dist/gundil-intercom-node-$V-linux-arm.tar.gz"
           cp "$A/gundil-intercom-node-linux-arm64/gundil-intercom-node-linux-arm64.tar.gz" "dist/gundil-intercom-node-$V-linux-arm64.tar.gz"
-          cp "$A/gundil-intercom-ios/gundil-intercom-ios-unsigned.ipa" "dist/GundilIntercom-$V-ios-unsigned.ipa"
-          cp "$A/gundil-intercom-macos/gundil-intercom-macos.zip" "dist/GundilIntercom-$V-macos.zip"
+          cp "$A/gundil-intercom-ios/gundil-intercom-ios-unsigned.ipa" "dist/Gundil_Intercom-$V-ios-unsigned.ipa"
+          cp "$A/gundil-intercom-macos/gundil-intercom-macos.zip" "dist/Gundil_Intercom-$V-macos.zip"
           chmod +x dist/*.AppImage
           (cd dist && sha256sum * > SHA256SUMS.txt)
           # "What's new" for this tag (optional), then the general notes.
@@ -340,6 +340,24 @@ jobs:
           TAG="${{ inputs.release }}"
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
             git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
+          fi
+      - name: Remove files of an earlier build that this one doesn't have
+        # e.g. after files were renamed; the upload below replaces the rest.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release view "$TAG" --json assets -q '.assets[].name' |
+              while read -r name; do
+                if [ ! -f "dist/$name" ]; then
+                  echo "Removing $name"
+                  gh release delete-asset "$TAG" "$name" -y
+                fi
+              done
           fi
       - uses: softprops/action-gh-release@v2
         with:

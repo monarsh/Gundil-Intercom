@@ -7,12 +7,12 @@ Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no acc
 
 | Device | File |
 |---|---|
-| **Windows 10/11** | `GundilIntercom-VERSION-windows-x64-setup.exe` (installer). Portable alternative: `…-windows-x64-portable.zip` |
-| **Android** phone/tablet | `GundilIntercom-VERSION-android-arm64-v8a.apk` (most phones). If unsure: `…-android-universal.apk` |
-| **iPhone / iPad** (iOS 15+) | `GundilIntercom-VERSION-ios-unsigned.ipa`, installed with AltStore or Sideloadly (see below) |
-| **Mac** (macOS 10.15+, Apple silicon or Intel) | `GundilIntercom-VERSION-macos.zip` |
-| **Linux PC** (x86_64) | `GundilIntercom-VERSION-x86_64.AppImage` (`chmod +x` it and run). Or `…-linux-x64.tar.gz` |
-| **Raspberry Pi 4/5** with desktop, 64-bit OS | `GundilIntercom-VERSION-aarch64.AppImage`. Or `…-linux-arm64.tar.gz` |
+| **Windows 10/11** | `Gundil_Intercom-VERSION-windows-x64-setup.exe` (installer). Portable alternative: `…-windows-x64-portable.zip` |
+| **Android** phone/tablet | `Gundil_Intercom-VERSION-android-arm64-v8a.apk` (most phones). If unsure: `…-android-universal.apk` |
+| **iPhone / iPad** (iOS 15+) | `Gundil_Intercom-VERSION-ios-unsigned.ipa`, installed with AltStore or Sideloadly (see below) |
+| **Mac** (macOS 10.15+, Apple silicon or Intel) | `Gundil_Intercom-VERSION-macos.zip` |
+| **Linux PC** (x86_64) | `gundil-intercom-VERSION-x86_64.AppImage` (`chmod +x` it and run). Or `…-linux-x64.tar.gz` |
+| **Raspberry Pi 4/5** with desktop, 64-bit OS | `gundil-intercom-VERSION-aarch64.AppImage`. Or `…-linux-arm64.tar.gz` |
 | **Orange Pi PC**, Raspberry Pi with 32-bit OS, no screen | `gundil-intercom-node-VERSION-linux-arm.tar.gz` (headless node, see below) |
 | Raspberry Pi / Orange Pi with 64-bit OS, no screen | `gundil-intercom-node-VERSION-linux-arm64.tar.gz` |
 
