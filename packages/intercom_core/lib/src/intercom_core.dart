@@ -1163,7 +1163,7 @@ class IntercomCore {
       throw CameraException('Restarting works for Tapo cameras only');
     }
     final problems = <String>[];
-    var done = false;
+    String? via, onvifProblem;
     if (cam.rtspUser.isNotEmpty) {
       try {
         await OnvifPtz(
@@ -1171,23 +1171,24 @@ class IntercomCore {
           username: cam.rtspUser,
           password: cam.rtspPassword,
         ).reboot();
-        done = true;
+        via = 'ONVIF, with the camera account';
       } catch (e) {
+        onvifProblem = '$e';
         problems.add('camera account (ONVIF): $e');
       }
     }
-    if (!done && cam.cloudPassword.isNotEmpty) {
+    if (via == null && cam.cloudPassword.isNotEmpty) {
       try {
         await TapoControl(
           host: cam.host,
           cloudPassword: cam.cloudPassword,
         ).reboot();
-        done = true;
+        via = 'the Tapo app\'s command, with the cloud password';
       } catch (e) {
         problems.add('cloud password: $e');
       }
     }
-    if (!done) {
+    if (via == null) {
       throw CameraException(
         problems.isEmpty
             ? 'Enter the cloud password or the camera account first'
@@ -1204,7 +1205,13 @@ class IntercomCore {
     _cameraRestarting[peerId] = DateTime.now().add(const Duration(seconds: 20));
     _peers[peerId]?.reachable = false;
     changed();
-    return '${cam.name} is restarting. It will be back in about a minute.';
+    // The camera account didn't work but the cloud password did: say why,
+    // in case the camera account needs fixing (it's also for the picture).
+    final note = onvifProblem == null
+        ? ''
+        : ' (ONVIF did not work: $onvifProblem)';
+    return '${cam.name} is restarting via $via$note. It will be back in '
+        'about a minute.';
   }
 
   // ---------------------------------------------------------------- backup
