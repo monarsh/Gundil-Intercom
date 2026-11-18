@@ -84,7 +84,14 @@ class OnvifPtz {
     );
   }
 
-  Future<void> _connect() async {
+  /// Restarts the camera (ONVIF SystemReboot). Throws [OnvifException]
+  /// when the camera refuses or doesn't support it.
+  Future<void> reboot() async {
+    await _syncClock();
+    await _call(_deviceUrl, '<tds:SystemReboot/>');
+  }
+
+  Future<void> _syncClock() async {
     // The login proof includes the time: use the camera's clock.
     try {
       final r = await _post(
@@ -101,6 +108,10 @@ class OnvifPtz {
         _clockOffset = cam.difference(DateTime.now().toUtc());
       }
     } catch (_) {}
+  }
+
+  Future<void> _connect() async {
+    await _syncClock();
     final caps = await _call(
       _deviceUrl,
       '<tds:GetCapabilities><tds:Category>All</tds:Category>'

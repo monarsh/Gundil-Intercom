@@ -332,4 +332,62 @@ void main() {
     );
     await tester.pump(const Duration(seconds: 3));
   });
+
+  testWidgets('Reboot camera is in the menu of Tapo cameras only', (
+    tester,
+  ) async {
+    final service = IntercomService(
+      selfId: 'me',
+      name: 'Me',
+      audio: FakeAudioEngine(),
+      enableDiscovery: false,
+    );
+    service.saveCamera(name: 'Porch', host: '127.0.0.1', cloudPassword: 'x');
+    service.saveCamera(
+      name: 'Gate',
+      host: '127.0.0.1',
+      kind: SavedCamera.kindRtsp,
+      rtspPath: '/live',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PeerList(service: service, onAddPeer: () {}, cameras: true),
+        ),
+      ),
+    );
+    await tester.pump();
+    Finder menuOf(String name) => find.descendant(
+      of: find.ancestor(of: find.text(name), matching: find.byType(ListTile)),
+      matching: find.byIcon(Icons.more_vert),
+    );
+
+    await tester.tap(menuOf('Porch'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Reboot camera'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Reboot Porch?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Reboot'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    // No camera here (and widget tests answer every HTTP request with 400):
+    // it says why it failed.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      find.textContaining('Could not restart Porch. cloud password: '),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5)); // Snack bar gone.
+    await tester.tap(menuOf('Gate'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Reboot camera'), findsNothing);
+    expect(find.text('Edit…'), findsOneWidget);
+  });
 }

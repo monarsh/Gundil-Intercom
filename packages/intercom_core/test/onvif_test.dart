@@ -19,6 +19,8 @@ class FakeOnvif {
   int get port => server.port;
   final moves = <String>[];
   bool relative = true;
+  bool canReboot = true;
+  int reboots = 0;
 
   static String? tag(String xml, String name) =>
       RegExp('<(?:\\w+:)?$name(?:\\s[^>]*)?>([^<]*)<').firstMatch(xml)?[1];
@@ -100,6 +102,14 @@ class FakeOnvif {
       final m = RegExp(r'PanTilt x="([^"]+)" y="([^"]+)"').firstMatch(body)!;
       moves.add('cont ${m[1]} ${m[2]}');
       res.write(env('<tptz:ContinuousMoveResponse/>'));
+    } else if (body.contains('<tds:SystemReboot/>') && canReboot) {
+      reboots++;
+      res.write(
+        env(
+          '<tds:SystemRebootResponse><tds:Message>Rebooting'
+          '</tds:Message></tds:SystemRebootResponse>',
+        ),
+      );
     } else if (body.contains('<tptz:Stop>')) {
       moves.add('stop');
       res.write(env('<tptz:StopResponse/>'));
@@ -168,5 +178,38 @@ void main() {
       ),
     );
     p.close();
+  });
+
+  test('restarts the camera', () async {
+    await ptz().reboot();
+    expect(cam.reboots, 1);
+  });
+
+  test('a camera without ONVIF restart says so', () async {
+    cam.canReboot = false;
+    await expectLater(
+      ptz().reboot(),
+      throwsA(
+        isA<OnvifException>().having(
+          (e) => e.message,
+          'message',
+          contains('Not Implemented'),
+        ),
+      ),
+    );
+  });
+
+  test('restarting with a wrong camera account is refused', () async {
+    await expectLater(
+      ptz(password: 'nope').reboot(),
+      throwsA(
+        isA<OnvifException>().having(
+          (e) => e.message,
+          'message',
+          contains('refused the camera account'),
+        ),
+      ),
+    );
+    expect(cam.reboots, 0);
   });
 }

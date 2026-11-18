@@ -7,6 +7,8 @@ import 'dart:typed_data';
 
 import 'audio_engine.dart';
 import 'camera/camera.dart';
+import 'camera/onvif.dart';
+import 'camera/tapo_control.dart';
 import 'contacts_backup.dart';
 import 'discovery.dart';
 import 'echo_suppressor.dart';
@@ -249,6 +251,10 @@ class IntercomCore {
   /// When the last call with each camera ended (see [cameraReconnectDelay]).
   final Map<String, DateTime> _cameraEndedAt = {};
   int _cameraTick = 0;
+
+  /// Cameras that were just told to restart: not checked until then (they
+  /// still answer for a few seconds before going down).
+  final Map<String, DateTime> _cameraRestarting = {};
 
   /// When each camera was last checked (see [_probeCameras]).
   final Map<String, DateTime> _cameraProbedAt = {};
@@ -1125,6 +1131,7 @@ class IntercomCore {
     if (_cameras.remove(peerId) == null) return;
     _cameraMisses.remove(peerId);
     _cameraProbedAt.remove(peerId);
+    _cameraRestarting.remove(peerId);
     if (_conversation?.members.containsKey(peerId) ?? false) {
       _removeMember(peerId, quiet: true);
     }
@@ -1143,6 +1150,61 @@ class IntercomCore {
     } finally {
       session.close();
     }
+  }
+
+  /// Restarts Tapo camera [peerId]: ONVIF with the camera account first,
+  /// then the Tapo app's own command with the cloud password. Returns how
+  /// it was done; throws [CameraException] saying why each way failed. The
+  /// camera shows offline until it answers again (about a minute).
+  Future<String> rebootCamera(String peerId) async {
+    final cam = _cameras[peerId];
+    if (cam == null) throw CameraException('No such camera');
+    if (!cam.isTapo) {
+      throw CameraException('Restarting works for Tapo cameras only');
+    }
+    final problems = <String>[];
+    var done = false;
+    if (cam.rtspUser.isNotEmpty) {
+      try {
+        await OnvifPtz(
+          host: cam.host,
+          username: cam.rtspUser,
+          password: cam.rtspPassword,
+        ).reboot();
+        done = true;
+      } catch (e) {
+        problems.add('camera account (ONVIF): $e');
+      }
+    }
+    if (!done && cam.cloudPassword.isNotEmpty) {
+      try {
+        await TapoControl(
+          host: cam.host,
+          cloudPassword: cam.cloudPassword,
+        ).reboot();
+        done = true;
+      } catch (e) {
+        problems.add('cloud password: $e');
+      }
+    }
+    if (!done) {
+      throw CameraException(
+        problems.isEmpty
+            ? 'Enter the cloud password or the camera account first'
+            : 'Could not restart ${cam.name}. ${problems.join('; ')}',
+      );
+    }
+    // It's going away: end a call with it and show it offline until the
+    // checks (every 10 s while offline) find it again.
+    if (_conversation?.members.containsKey(peerId) ?? false) {
+      _removeMember(peerId, reason: '${cam.name} is restarting', tone: false);
+    }
+    _cameraEndedAt[peerId] = DateTime.now().add(const Duration(seconds: 20));
+    _cameraMisses[peerId] = 2;
+    _cameraRestarting[peerId] = DateTime.now().add(const Duration(seconds: 20));
+    _peers[peerId]?.reachable = false;
+    changed();
+    return '${cam.name} is restarting. It will be back in about a minute.';
   }
 
   // ---------------------------------------------------------------- backup
@@ -1283,6 +1345,11 @@ class IntercomCore {
       // In a call with it: the stream itself shows it's there, and a busy
       // camera may refuse an extra connection.
       if (_cameraSessions.containsKey(cam.peerId)) continue;
+      final restarting = _cameraRestarting[cam.peerId];
+      if (restarting != null) {
+        if (now.isBefore(restarting)) continue;
+        _cameraRestarting.remove(cam.peerId);
+      }
       // Online, and the last check answered: no hurry.
       if (due &&
           (_peers[cam.peerId]?.reachable ?? false) &&

@@ -6,7 +6,7 @@ import 'group_dialog.dart';
 import 'peer_dialog.dart';
 import 'widgets.dart';
 
-enum _PeerAction { edit, remove }
+enum _PeerAction { edit, reboot, remove }
 
 enum _GroupAction { edit, leave }
 
@@ -376,11 +376,13 @@ class PeerList extends StatelessWidget {
   }
 
   Widget _menu(BuildContext context, PeerEntry e) {
+    final cam = e.peerId == null ? null : service.camera(e.peerId!);
     return PopupMenuButton<_PeerAction>(
       tooltip: 'Peer options',
       icon: const Icon(Icons.more_vert),
       onSelected: (a) => switch (a) {
         _PeerAction.edit => _edit(context, e),
+        _PeerAction.reboot => _reboot(context, cam!),
         _PeerAction.remove => _remove(context, e),
       },
       itemBuilder: (_) => [
@@ -391,6 +393,14 @@ class PeerList extends StatelessWidget {
             title: const Text('Edit…'),
           ),
         ),
+        if (cam != null && cam.isTapo)
+          const PopupMenuItem(
+            value: _PeerAction.reboot,
+            child: ListTile(
+              leading: Icon(Icons.restart_alt),
+              title: Text('Reboot camera'),
+            ),
+          ),
         const PopupMenuItem(
           value: _PeerAction.remove,
           child: ListTile(
@@ -459,6 +469,37 @@ class PeerList extends StatelessWidget {
       }
     } on ArgumentError catch (err) {
       if (context.mounted) _snack(context, '${err.message}', error: true);
+    }
+  }
+
+  Future<void> _reboot(BuildContext context, SavedCamera cam) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reboot ${cam.name}?'),
+        content: const Text(
+          'The camera restarts and is offline for about a minute. A call '
+          'with it ends, and the picture comes back when it\'s up again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reboot'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    _snack(context, 'Asking ${cam.name} to restart…');
+    try {
+      final msg = await service.rebootCamera(cam.peerId);
+      if (context.mounted) _snack(context, msg);
+    } on CameraException catch (err) {
+      if (context.mounted) _snack(context, err.message, error: true);
     }
   }
 
