@@ -129,7 +129,11 @@ class RtspAudioClient {
     return r;
   }
 
+  /// What [start] is doing (or was doing when it failed).
+  String step = '';
+
   Future<void> start() async {
+    step = 'connecting';
     final socket = await Socket.connect(
       host,
       port,
@@ -138,6 +142,7 @@ class RtspAudioClient {
     _socket = socket;
     socket.done.catchError((Object _) {});
     _reader = ByteReader(socket);
+    step = 'logging in';
     try {
       final (_, headers, sdp) = await _request(
         'DESCRIBE',
@@ -151,6 +156,7 @@ class RtspAudioClient {
       var base = headers['content-base'] ?? _url;
       if (!base.endsWith('/')) base = '$base/';
       final track = control.startsWith('rtsp://') ? control : '$base$control';
+      step = 'starting the stream';
       final (_, setup, _) = await _request(
         'SETUP',
         track,

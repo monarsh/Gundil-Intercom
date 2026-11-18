@@ -50,18 +50,23 @@ class _TapoConn {
   static Future<_TapoConn> open(
     String host,
     int port,
-    String cloudPassword,
-  ) async {
+    String cloudPassword, {
+    void Function(String step)? onStep,
+    void Function(Socket socket)? onSocket,
+  }) async {
+    onStep?.call('connecting');
     final socket = await Socket.connect(
       host,
       port,
       timeout: const Duration(seconds: 5),
     );
+    onSocket?.call(socket);
     socket.setOption(SocketOption.tcpNoDelay, true);
     // Write errors (camera gone) show up on the reader; don't let them
     // escape as uncaught errors.
     socket.done.catchError((Object _) {});
     final reader = ByteReader(socket);
+    onStep?.call('logging in');
     try {
       String request([String? auth]) =>
           'POST /stream HTTP/1.1\r\n'
@@ -260,14 +265,37 @@ class TapoClient {
 
   bool get canTalk => _talk != null;
 
+  /// What [start] and [startTalk] are doing (or were doing when they
+  /// failed): 'connecting', 'logging in', 'starting the stream', ...
+  String listenStep = '', talkStep = '';
+
+  /// Every connection we opened, so [close] also drops one that is still
+  /// logging in (a Tapo only takes a few connections at a time).
+  final List<Socket> _sockets = [];
+
+  void _opened(Socket socket) {
+    if (_closed) {
+      socket.destroy();
+    } else {
+      _sockets.add(socket);
+    }
+  }
+
   /// Logs in and starts receiving the camera's stream.
   Future<void> start() async {
-    final conn = await _TapoConn.open(host, port, cloudPassword);
+    final conn = await _TapoConn.open(
+      host,
+      port,
+      cloudPassword,
+      onStep: (s) => listenStep = s,
+      onSocket: _opened,
+    );
     if (_closed) {
       conn.close();
       return;
     }
     _listen = conn;
+    listenStep = 'starting the stream';
     // The small picture: we only use the sound.
     await conn.request(
       '{"params":{"preview":{"audio":["default"],"channels":[0],'
@@ -299,7 +327,14 @@ class TapoClient {
 
   /// Opens the line to the camera's speaker.
   Future<void> startTalk() async {
-    final conn = await _TapoConn.open(host, port, cloudPassword);
+    final conn = await _TapoConn.open(
+      host,
+      port,
+      cloudPassword,
+      onStep: (s) => talkStep = s,
+      onSocket: _opened,
+    );
+    talkStep = 'opening the speaker';
     try {
       _talkSession = await conn.request(
         '{"params":{"talk":{"mode":"aec"},"method":"get"},"seq":3,'
@@ -355,5 +390,9 @@ class TapoClient {
     _talk?.close();
     _listen = null;
     _talk = null;
+    for (final s in _sockets) {
+      s.destroy();
+    }
+    _sockets.clear();
   }
 }

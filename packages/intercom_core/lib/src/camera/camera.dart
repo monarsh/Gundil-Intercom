@@ -161,7 +161,12 @@ class CameraException implements Exception {
 
 /// What [CameraSession.start] managed to set up.
 class CameraStatus {
-  CameraStatus({required this.talk, this.talkProblem, required this.via});
+  CameraStatus({
+    required this.talk,
+    this.talkProblem,
+    required this.via,
+    this.elapsed,
+  });
 
   /// We can talk through the camera's speaker.
   final bool talk;
@@ -172,9 +177,18 @@ class CameraStatus {
   /// 'tapo' or 'rtsp': how we hear it.
   final String via;
 
-  String get summary => talk
-      ? 'Listen and talk work'
-      : 'Listen only: ${talkProblem ?? 'talking is not available'}';
+  /// How long connecting took.
+  final Duration? elapsed;
+
+  String get summary {
+    final took = elapsed == null
+        ? ''
+        : ' (connected in '
+              '${(elapsed!.inMilliseconds / 1000).toStringAsFixed(1)} s)';
+    return talk
+        ? 'Listen and talk work$took'
+        : 'Listen only$took: ${talkProblem ?? 'talking is not available'}';
+  }
 }
 
 /// A running audio connection with one camera, in the intercom's own
@@ -202,10 +216,12 @@ class CameraSession {
     onAudio(rate == 16000 ? pcm : _up.process(pcm));
   }
 
-  /// Connects: the Tapo stream (listen, then talk) first, RTSP (listen
-  /// only) when that isn't possible. Throws [CameraException] if the
-  /// camera can't even be heard.
+  /// Connects: the Tapo stream (listen and talk, both at once) first, RTSP
+  /// (listen only) when that isn't possible. Throws [CameraException] if
+  /// the camera can't even be heard. Errors say which step failed and
+  /// after how long.
   Future<CameraStatus> start() async {
+    final clock = Stopwatch()..start();
     String? tapoProblem;
     if (!camera.isTapo) {
       // Any other RTSP camera: listen only.
@@ -223,24 +239,29 @@ class CameraSession {
           if (!_closed) onClosed(e);
         },
       );
+      // Listen and talk are two connections: open them together.
+      String? talkProblem;
+      final talk = tapo
+          .startTalk()
+          .timeout(const Duration(seconds: 10))
+          .catchError((Object e) {
+            talkProblem = _failed('talk', tapo.talkStep, clock, e);
+          });
       try {
         await tapo.start().timeout(const Duration(seconds: 10));
         _tapo = tapo;
-        String? talkProblem;
-        try {
-          await tapo.startTalk().timeout(const Duration(seconds: 10));
-        } catch (e) {
-          talkProblem = _text(e);
-        }
+        await talk;
         if (_closed) tapo.close();
         return status = CameraStatus(
           talk: tapo.canTalk,
           talkProblem: talkProblem,
           via: 'tapo',
+          elapsed: clock.elapsed,
         );
       } catch (e) {
+        tapoProblem = _failed('listen', tapo.listenStep, clock, e);
+        // Also drops the talk connection if it's still opening.
         tapo.close();
-        tapoProblem = _text(e);
       }
     } else {
       tapoProblem = 'no cloud password set';
@@ -264,14 +285,22 @@ class CameraSession {
         if (!_closed) onClosed(e);
       },
     );
+    final rtspStarted = clock.elapsed;
     try {
       await rtsp.start().timeout(const Duration(seconds: 10));
     } catch (e) {
       rtsp.close();
+      final what = _failed(
+        camera.isTapo ? 'camera account' : 'listen',
+        rtsp.step,
+        clock,
+        e,
+        since: rtspStarted,
+      );
       throw CameraException(
         tapoProblem == null || camera.cloudPassword.isEmpty
-            ? _text(e)
-            : '$tapoProblem; camera account: ${_text(e)}',
+            ? what
+            : '$tapoProblem; $what',
       );
     }
     _rtsp = rtsp;
@@ -280,7 +309,23 @@ class CameraSession {
       talk: false,
       talkProblem: tapoProblem ?? 'this camera has no talk-back',
       via: 'rtsp',
+      elapsed: clock.elapsed,
     );
+  }
+
+  /// "Listen (logging in, after 3.2 s): the camera refused ...".
+  static String _failed(
+    String what,
+    String step,
+    Stopwatch clock,
+    Object e, {
+    Duration since = Duration.zero,
+  }) {
+    final secs = ((clock.elapsed - since).inMilliseconds / 1000)
+        .toStringAsFixed(1);
+    final where = step.isEmpty ? '' : '$step, ';
+    final name = what[0].toUpperCase() + what.substring(1);
+    return '$name (${where}after $secs s): ${_text(e)}';
   }
 
   static String _text(Object e) => switch (e) {

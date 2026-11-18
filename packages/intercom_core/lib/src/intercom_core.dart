@@ -250,6 +250,14 @@ class IntercomCore {
   final Map<String, DateTime> _cameraEndedAt = {};
   int _cameraTick = 0;
 
+  /// When each camera was last checked (see [_probeCameras]).
+  final Map<String, DateTime> _cameraProbedAt = {};
+
+  /// How often a camera that is online is checked. Every check is a
+  /// connection, and a Tapo only takes a few at a time; one that is offline
+  /// is checked every 10 s so it shows up soon after it's back.
+  static Duration cameraOnlineCheck = const Duration(seconds: 30);
+
   /// Tests only: device ids we pretend we can't connect to (no route).
   final Set<String> debugUnreachable = {};
 
@@ -526,7 +534,7 @@ class IntercomCore {
     _cameras.values.forEach(_cameraPeer);
     _probeCameras();
     _housekeeping = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (++_cameraTick % 10 == 0) _probeCameras();
+      if (++_cameraTick % 10 == 0) _probeCameras(due: true);
       _checkConversation();
       _keepLinksAlive();
       changed();
@@ -1116,6 +1124,7 @@ class IntercomCore {
   void removeCamera(String peerId) {
     if (_cameras.remove(peerId) == null) return;
     _cameraMisses.remove(peerId);
+    _cameraProbedAt.remove(peerId);
     if (_conversation?.members.containsKey(peerId) ?? false) {
       _removeMember(peerId, quiet: true);
     }
@@ -1266,17 +1275,34 @@ class IntercomCore {
     )..camera = true;
   }
 
-  /// Checks which cameras answer (their stream or RTSP port).
-  void _probeCameras() {
+  /// Checks which cameras answer (their stream or RTSP port). [due]: only
+  /// the ones whose next check is due (see [cameraOnlineCheck]).
+  void _probeCameras({bool due = false}) {
+    final now = DateTime.now();
     for (final cam in _cameras.values.toList()) {
       // In a call with it: the stream itself shows it's there, and a busy
       // camera may refuse an extra connection.
       if (_cameraSessions.containsKey(cam.peerId)) continue;
+      // Online, and the last check answered: no hurry.
+      if (due &&
+          (_peers[cam.peerId]?.reachable ?? false) &&
+          !_cameraMisses.containsKey(cam.peerId)) {
+        final last = _cameraProbedAt[cam.peerId];
+        // A little early, so a 30 s interval lands on every third tick.
+        if (last != null &&
+            now.difference(last) <
+                cameraOnlineCheck - const Duration(seconds: 2)) {
+          continue;
+        }
+      }
+      _cameraProbedAt[cam.peerId] = now;
       () async {
         var ok = false;
+        // RTSP first: a plain connect and close there is the lightest for
+        // the camera.
         for (final port in [
-          if (cam.isTapo && cam.cloudPassword.isNotEmpty) cam.port,
           if (!cam.isTapo || cam.rtspUser.isNotEmpty) cam.rtspPort,
+          if (cam.isTapo && cam.cloudPassword.isNotEmpty) cam.port,
         ]) {
           try {
             final s = await Socket.connect(

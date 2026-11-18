@@ -402,6 +402,33 @@ void main() {
   });
 
   group('camera session', () {
+    test('a camera account that is refused says where it failed', () async {
+      final r = await FakeRtsp.start();
+      addTearDown(r.close);
+      final s = CameraSession(
+        SavedCamera(
+          key: 'x',
+          name: 'Gate',
+          host: '127.0.0.1',
+          rtspUser: 'cam',
+          rtspPassword: 'wrong-password',
+          rtspPort: r.port,
+        ),
+        onAudio: (_) {},
+        onClosed: (_) {},
+      );
+      await expectLater(
+        s.start(),
+        throwsA(
+          isA<CameraException>().having(
+            (e) => e.message,
+            'message',
+            startsWith('Camera account (logging in, after '),
+          ),
+        ),
+      );
+    });
+
     late FakeTapo tapo;
     late FakeRtsp rtsp;
 
@@ -432,6 +459,10 @@ void main() {
       final status = await s.start();
       expect(status.talk, isTrue);
       expect(status.via, 'tapo');
+      expect(
+        status.summary,
+        matches(r'^Listen and talk work \(connected in \d+\.\d s\)$'),
+      );
       await eventually(() => heard.length > 1600);
       expect(heard.last, closeTo(8000, 400)); // 16 kHz, same level.
       s.sendAudio(Int16List.fromList(List.filled(320, -4000)));
@@ -463,7 +494,10 @@ void main() {
           isA<CameraException>().having(
             (e) => e.message,
             'message',
-            contains('refused the cloud password'),
+            allOf(
+              contains('refused the cloud password'),
+              matches(r'^Listen \(logging in, after \d+\.\d s\): '),
+            ),
           ),
         ),
       );
@@ -475,6 +509,10 @@ void main() {
       final status = await s.start();
       expect(status.talk, isFalse);
       expect(status.summary, contains('Listen only'));
+      expect(
+        status.talkProblem,
+        startsWith('Talk (opening the speaker, after '),
+      );
       s.close();
     });
 
@@ -488,6 +526,7 @@ void main() {
       final status = await s.start();
       expect(status.via, 'rtsp');
       expect(status.talk, isFalse);
+      expect(status.talkProblem, contains('refused the cloud password'));
       await eventually(() => heard.length > 1600);
       expect(heard.last, closeTo(6000, 300));
       s.close();

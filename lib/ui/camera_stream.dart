@@ -353,9 +353,16 @@ class _CameraStreamState extends State<CameraStream> {
     if (CameraStream.debugPlayer == null) _open();
   }
 
+  /// When the current attempt started, and whether it got the picture
+  /// going: errors say at which step and after how long.
+  final Stopwatch _clock = Stopwatch();
+
   Future<void> _open() async {
     final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _player = c;
+    _clock
+      ..reset()
+      ..start();
     c.addListener(() => _onChange(c));
     try {
       await c.initialize().timeout(const Duration(seconds: 15));
@@ -382,9 +389,13 @@ class _CameraStreamState extends State<CameraStream> {
     if (_disposed || _player != c) return;
     _player = null;
     unawaited(c.dispose());
+    final secs = (_clock.elapsedMilliseconds / 1000).toStringAsFixed(1);
+    final problem = _ready
+        ? 'the stream stopped: ${_describe(error)}'
+        : 'opening the stream (after $secs s): ${_describe(error)}';
     setState(() {
       _ready = false;
-      _problem = _describe(error);
+      _problem = problem;
     });
     _retry?.cancel();
     _retry = Timer(const Duration(seconds: 5), () {
