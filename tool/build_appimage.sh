@@ -30,16 +30,22 @@ VERSION="$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' "$ROOT/pubspec.yaml")"
 
 APPDIR="$ROOT/build/appimage/GundilIntercom.AppDir"
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/share/applications" \
-         "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/usr/share/applications"
 
 # The Flutter bundle finds its libraries via $ORIGIN/lib, so copy it as is.
 cp -a "$BUNDLE/." "$APPDIR/"
-cp "$ROOT/linux/packaging/gundil-intercom.desktop" "$APPDIR/"
-cp "$ROOT/linux/packaging/gundil-intercom.desktop" "$APPDIR/usr/share/applications/"
-cp "$ROOT/linux/packaging/gundil-intercom.png" "$APPDIR/"
-cp "$ROOT/linux/packaging/gundil-intercom.png" \
-   "$APPDIR/usr/share/icons/hicolor/256x256/apps/"
+# Named after the application id, so docks match the window to it (and to
+# its icon). The app also installs it for the user on first start
+# (linux/runner/desktop_integration.cc), since an AppImage isn't installed.
+DESKTOP=com.p2pintercom.p2p_intercom.desktop
+cp "$ROOT/linux/packaging/$DESKTOP" "$APPDIR/"
+cp "$ROOT/linux/packaging/$DESKTOP" "$APPDIR/usr/share/applications/"
+cp "$ROOT/linux/packaging/icons/gundil-intercom-256.png" "$APPDIR/gundil-intercom.png"
+for f in "$ROOT"/linux/packaging/icons/gundil-intercom-*.png; do
+  size="$(basename "$f" .png)"; size="${size##*-}"
+  mkdir -p "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps"
+  cp "$f" "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/gundil-intercom.png"
+done
 ln -sf gundil-intercom.png "$APPDIR/.DirIcon"
 
 cat > "$APPDIR/AppRun" <<'RUN'

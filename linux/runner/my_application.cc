@@ -6,6 +6,7 @@
 #endif
 
 #include "camera_capture.h"
+#include "desktop_integration.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "window_tray.h"
 
@@ -42,6 +43,9 @@ static void my_application_activate(GApplication* application) {
   self->window = window;
   g_object_add_weak_pointer(G_OBJECT(window),
                             reinterpret_cast<gpointer*>(&self->window));
+  // The icon in the dock / taskbar and the app menu.
+  desktop_integration_install();
+  desktop_integration_set_window_icon(window);
   window_tray_init(GTK_APPLICATION(application), window);
 
   // Use a header bar when running in GNOME as this is the common style used

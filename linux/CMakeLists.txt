@@ -97,6 +97,10 @@ install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
 # Window and tray icon (linux/runner/window_tray.cc).
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/gundil-intercom.png"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+# The icon in every size: window, dock and app menu
+# (linux/runner/desktop_integration.cc).
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)

@@ -73,6 +73,7 @@ class Autostart {
         'Name=$_name\n'
         'Comment=Push-to-talk LAN intercom\n'
         'Exec=$quoted $minimizedFlag\n'
+        'Icon=gundil-intercom\n'
         'Terminal=false\n'
         'X-GNOME-Autostart-enabled=true\n';
   }

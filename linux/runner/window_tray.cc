@@ -243,8 +243,8 @@ void window_tray_init(GtkApplication* app, GtkWindow* window) {
   g_autofree gchar* icon_dir =
       exe_dir ? g_build_filename(exe_dir, "data", nullptr) : nullptr;
   if (icon_dir != nullptr) {
+    // Notifications' icon (the window's is set by desktop_integration).
     tray.icon_path = g_build_filename(icon_dir, "gundil-intercom.png", nullptr);
-    gtk_window_set_icon_from_file(window, tray.icon_path, nullptr);
   }
 
   tray.watcher = watcher_running();
