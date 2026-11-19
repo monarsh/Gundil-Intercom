@@ -54,39 +54,6 @@ gchar* exec_quote(const gchar* path) {
   return g_string_free(s, FALSE);
 }
 
-// Whether another menu entry in [apps_dir] (not [own_name]) already starts
-// [exe], e.g. one made by AppImageLauncher, Gear Lever or appimaged when
-// they integrated the AppImage. Such tools copy the AppImage's own entry,
-// StartupWMClass included, so the taskbar icon works with theirs.
-bool other_entry_runs(const gchar* apps_dir, const gchar* own_name,
-                      const gchar* exe) {
-  GDir* dir = g_dir_open(apps_dir, 0, nullptr);
-  if (dir == nullptr) return false;
-  bool found = false;
-  const gchar* name;
-  while (!found && (name = g_dir_read_name(dir)) != nullptr) {
-    if (!g_str_has_suffix(name, ".desktop") || g_strcmp0(name, own_name) == 0) {
-      continue;
-    }
-    g_autofree gchar* path = g_build_filename(apps_dir, name, nullptr);
-    g_autoptr(GKeyFile) key_file = g_key_file_new();
-    if (!g_key_file_load_from_file(key_file, path, G_KEY_FILE_NONE, nullptr)) {
-      continue;
-    }
-    g_autofree gchar* exec = g_key_file_get_string(
-        key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_EXEC,
-        nullptr);
-    if (exec == nullptr) continue;
-    gchar** argv = nullptr;
-    if (g_shell_parse_argv(exec, nullptr, &argv, nullptr)) {
-      found = argv[0] != nullptr && g_strcmp0(argv[0], exe) == 0;
-      g_strfreev(argv);
-    }
-  }
-  g_dir_close(dir);
-  return found;
-}
-
 }  // namespace
 
 void desktop_integration_install() {
@@ -118,17 +85,6 @@ void desktop_integration_install() {
                          ? appimage
                          : self;
   if (exe == nullptr) return;
-
-  // Already in the menu through another tool's entry: one is enough, so
-  // remove ours (an earlier start may have written it).
-  g_autofree gchar* apps_dir = g_build_filename(data, "applications", nullptr);
-  if (other_entry_runs(apps_dir, entry_name, exe)) {
-    if (existing != nullptr && g_unlink(entry_path) == 0) {
-      g_message("Desktop entry removed (another one starts this app): %s",
-                entry_path);
-    }
-    return;
-  }
 
   bool icons_changed = false;
   g_autofree gchar* src_dir = icons_dir();
