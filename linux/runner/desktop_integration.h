@@ -8,7 +8,9 @@
 // ~/.local/share/applications/<APPLICATION_ID>.desktop and the icons in
 // ~/.local/share/icons/hicolor. Docks and taskbars (GNOME, KDE on Wayland)
 // show a window's icon only through such an entry. Does nothing when a
-// package already installed one, or with GUNDIL_NO_DESKTOP_ENTRY=1.
+// package already installed one, or with GUNDIL_NO_DESKTOP_ENTRY=1. When
+// another entry (AppImageLauncher, Gear Lever) already starts the same
+// file, removes its own instead, so the menu doesn't list the app twice.
 void desktop_integration_install();
 
 // Gives [window] the app's icon in every size there is (X11 taskbars use
