@@ -367,3 +367,6 @@ jobs:
           body_path: release-notes.md
           files: dist/*
           fail_on_unmatched_files: true
+          # Latest = the newest release by date, so rebuilding an older one
+          # doesn't make it Latest.
+          make_latest: legacy
