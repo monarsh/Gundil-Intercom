@@ -532,6 +532,45 @@ void main() {
       s.close();
     });
 
+    test('the debug log shows each step, without the passwords', () async {
+      DebugLog.instance.clear();
+      final s = CameraSession(cam(), onAudio: (_) {}, onClosed: (_) {});
+      await s.start();
+      await eventually(
+        () => DebugLog.instance.entries.any(
+          (e) => e.text.contains('first audio'),
+        ),
+      );
+      s.close();
+      final fallback = CameraSession(
+        cam(password: 'nope', withRtsp: true),
+        onAudio: (_) {},
+        onClosed: (_) {},
+      );
+      await fallback.start();
+      fallback.close();
+      final log = DebugLog.instance.dump();
+      for (final line in [
+        'Porch: starting (call): Tapo at 127.0.0.1',
+        'Porch listen: connecting to 127.0.0.1:',
+        'Porch listen: logged in',
+        'Porch talk: speaker open',
+        'stream contents: pid ',
+        'G.711 A-law 8 kHz audio',
+        'first audio after',
+        'Porch: Listen and talk work',
+        'Porch: closed (call)',
+        'Porch listen: login failed after',
+        'trying RTSP (listen only)',
+        '[rtsp] Porch: audio track: A-law 8000 Hz',
+        'Porch: Listen only',
+      ]) {
+        expect(log, contains(line));
+      }
+      expect(log, isNot(contains('hunter2')));
+      expect(log, isNot(contains('secret')));
+    });
+
     test('another RTSP camera is heard (listen only)', () async {
       final heard = <int>[];
       final s = CameraSession(

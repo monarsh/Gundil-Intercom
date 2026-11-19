@@ -14,6 +14,8 @@ import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
 
+import '../debug_log.dart';
+
 class TapoControlException implements Exception {
   TapoControlException(this.message, {this.badLogin = false});
   final String message;
@@ -55,6 +57,7 @@ class TapoControl {
   /// Restarts the camera.
   Future<void> reboot() async {
     await _login();
+    debugLog('control', '$host:$port: logged in, sending rebootDevice');
     await _call({
       'method': 'multipleRequest',
       'params': {
@@ -80,6 +83,11 @@ class TapoControl {
     final types = data['encrypt_type'];
     _secure =
         (types is List && types.map((t) => '$t').contains('3')) || types == '3';
+    debugLog(
+      'control',
+      '$host:$port: ${_secure ? 'secure login (newer firmware)' : 'older login'}'
+          ' (answer code ${probe['error_code']})',
+    );
     if (!_secure) {
       final r = await _post('/', {
         'method': 'login',

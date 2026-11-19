@@ -6,6 +6,7 @@ export 'src/camera/camera.dart';
 export 'src/camera/onvif.dart';
 export 'src/camera/tapo_control.dart';
 export 'src/contacts_backup.dart';
+export 'src/debug_log.dart';
 export 'src/discovery.dart';
 export 'src/echo_suppressor.dart';
 export 'src/mixer.dart';

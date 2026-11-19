@@ -128,6 +128,7 @@ class _CameraStageState extends State<CameraStage> {
       if (_ptzProblem != null && mounted) setState(() => _ptzProblem = null);
     } catch (e) {
       _hold?.cancel();
+      debugLog('ptz', '${cam.name}: move ($x, $y) failed: $e');
       if (mounted) setState(() => _ptzProblem = '$e');
     } finally {
       _moving = false;
@@ -233,6 +234,10 @@ class _CameraStageState extends State<CameraStage> {
                                   child: CameraStream(
                                     key: ValueKey(url),
                                     url: url,
+                                    name:
+                                        '${cam.name} '
+                                                '${cam.isTapo ? (viewer.hd ? 'HD' : 'SD') : ''}'
+                                            .trim(),
                                   ),
                                 ),
                               ),
@@ -328,9 +333,12 @@ class _CameraStageState extends State<CameraStage> {
 /// Plays an RTSP stream (no sound: the camera is heard through a call).
 /// Tries again by itself while the camera can't be reached.
 class CameraStream extends StatefulWidget {
-  const CameraStream({super.key, required this.url});
+  const CameraStream({super.key, required this.url, this.name = 'camera'});
 
   final String url;
+
+  /// Who this is in the debug log ("Porch SD").
+  final String name;
 
   /// Tests: shows this instead of a real player.
   @visibleForTesting
@@ -356,6 +364,32 @@ class _CameraStreamState extends State<CameraStream> {
   /// When the current attempt started, and whether it got the picture
   /// going: errors say at which step and after how long.
   final Stopwatch _clock = Stopwatch();
+  int _attempt = 0;
+  bool _buffering = false;
+  Size _shownSize = Size.zero;
+
+  void _log(String m) => debugLog('video', '${widget.name}: $m');
+
+  /// Every 10 s while playing: whether the picture still moves.
+  Timer? _watch;
+  Duration? _lastPosition;
+
+  void _check() {
+    final c = _player;
+    if (_disposed || c == null || !_ready) return;
+    final v = c.value;
+    final pos = v.position;
+    if (pos == _lastPosition) {
+      _log(
+        'no new picture in the last 10 s (stuck at '
+        '${(pos.inMilliseconds / 1000).toStringAsFixed(1)} s'
+        '${v.isBuffering ? ', buffering' : ''}${v.isPlaying ? '' : ', paused'})',
+      );
+    } else if (DebugLog.instance.detailed) {
+      _log('playing, at ${(pos.inMilliseconds / 1000).toStringAsFixed(1)} s');
+    }
+    _lastPosition = pos;
+  }
 
   Future<void> _open() async {
     final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
@@ -363,12 +397,23 @@ class _CameraStreamState extends State<CameraStream> {
     _clock
       ..reset()
       ..start();
+    _attempt++;
+    _buffering = false;
+    _shownSize = Size.zero;
+    _log('opening ${widget.url} (attempt $_attempt)');
     c.addListener(() => _onChange(c));
     try {
       await c.initialize().timeout(const Duration(seconds: 15));
       if (_disposed || _player != c) return;
+      final v = c.value;
+      _log(
+        'stream opened in ${_clock.elapsedMilliseconds} ms: '
+        '${v.size.width.round()}×${v.size.height.round()}',
+      );
       await c.setVolume(0);
       await c.play();
+      _lastPosition = null;
+      _watch ??= Timer.periodic(const Duration(seconds: 10), (_) => _check());
       if (mounted) setState(() => _ready = true);
     } catch (e) {
       _failed(c, e);
@@ -378,6 +423,23 @@ class _CameraStreamState extends State<CameraStream> {
   void _onChange(VideoPlayerController c) {
     if (_disposed || _player != c) return;
     final v = c.value;
+    if (v.isBuffering != _buffering) {
+      _buffering = v.isBuffering;
+      _log(
+        _buffering
+            ? 'waiting for picture data (buffering)'
+            : 'picture data flowing again',
+      );
+    }
+    if (v.isInitialized && v.size != _shownSize && v.size != Size.zero) {
+      if (_shownSize != Size.zero) {
+        _log(
+          'picture size changed to '
+          '${v.size.width.round()}×${v.size.height.round()}',
+        );
+      }
+      _shownSize = v.size;
+    }
     if (v.hasError) {
       _failed(c, v.errorDescription ?? 'stream error');
     } else if (v.isCompleted && _ready) {
@@ -393,6 +455,7 @@ class _CameraStreamState extends State<CameraStream> {
     final problem = _ready
         ? 'the stream stopped: ${_describe(error)}'
         : 'opening the stream (after $secs s): ${_describe(error)}';
+    _log('$problem; trying again in 5 s');
     setState(() {
       _ready = false;
       _problem = problem;
@@ -413,6 +476,8 @@ class _CameraStreamState extends State<CameraStream> {
   void dispose() {
     _disposed = true;
     _retry?.cancel();
+    _watch?.cancel();
+    if (CameraStream.debugPlayer == null) _log('picture closed');
     _player?.dispose();
     super.dispose();
   }

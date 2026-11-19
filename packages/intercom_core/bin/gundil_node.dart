@@ -37,6 +37,7 @@ Future<void> main(List<String> args) async {
     return;
   }
   IntercomCore.log = (m) => log('debug: $m');
+  DebugLog.instance.printer = (line) => log('debug: $line');
 
   final state = _NodeState.load(cfg.str('state'));
   final name = cfg.str('name') ?? _hostname();

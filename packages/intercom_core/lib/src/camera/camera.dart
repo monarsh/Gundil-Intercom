@@ -4,8 +4,10 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../debug_log.dart';
 import 'g711.dart';
 import 'mpegts.dart';
 import 'rtsp_client.dart';
@@ -194,7 +196,48 @@ class CameraStatus {
 /// A running audio connection with one camera, in the intercom's own
 /// format (16 kHz PCM both ways).
 class CameraSession {
-  CameraSession(this.camera, {required this.onAudio, required this.onClosed});
+  CameraSession(
+    this.camera, {
+    required this.onAudio,
+    required this.onClosed,
+    this.purpose = 'call',
+  });
+
+  /// 'call' or 'test', for the debug log.
+  final String purpose;
+
+  void _log(String m) => debugLog('camera', '${camera.name}: $m');
+
+  // Sound both ways since the last summary (see [_summary]).
+  int _framesIn = 0, _framesOut = 0, _peakIn = 0, _peakOut = 0;
+  Timer? _report;
+  final Stopwatch _reportClock = Stopwatch();
+
+  static int _peak(Int16List pcm) {
+    var m = 0;
+    for (final v in pcm) {
+      final a = v.abs();
+      if (a > m) m = a;
+    }
+    return m;
+  }
+
+  /// A peak sample as dB below full scale ("-23 dB", "silent").
+  static String _db(int peak) => peak <= 0
+      ? 'silent'
+      : '${(20 * math.log(peak / 32768) / math.ln10).round()} dB';
+
+  void _summary() {
+    final secs = (_reportClock.elapsedMilliseconds / 1000).round();
+    _reportClock.reset();
+    _log(
+      'sound in $secs s: from the camera $_framesIn chunks '
+      '(loudest ${_db(_peakIn)}); to the camera $_framesOut chunks '
+      '(loudest ${_db(_peakOut)})'
+      '${status?.talk == false ? ' — talking not available' : ''}',
+    );
+    _framesIn = _framesOut = _peakIn = _peakOut = 0;
+  }
 
   final SavedCamera camera;
   final void Function(Int16List pcm16k) onAudio;
@@ -213,6 +256,8 @@ class CameraSession {
   void _g711(Uint8List payload, {required bool alaw, required int rate}) {
     if (_closed) return;
     final pcm = alaw ? alawDecode(payload) : ulawDecode(payload);
+    _framesIn++;
+    _peakIn = math.max(_peakIn, _peak(pcm));
     onAudio(rate == 16000 ? pcm : _up.process(pcm));
   }
 
@@ -222,11 +267,32 @@ class CameraSession {
   /// after how long.
   Future<CameraStatus> start() async {
     final clock = Stopwatch()..start();
+    _log(
+      'starting ($purpose): ${camera.isTapo ? 'Tapo' : 'RTSP camera'} at '
+      '${camera.host}, cloud password ${camera.cloudPassword.isEmpty ? 'not set' : 'set'}, '
+      'camera account ${camera.rtspUser.isEmpty ? 'not set' : 'set'}',
+    );
+    try {
+      final s = await _start(clock);
+      _log('${s.summary} (via ${s.via})');
+      _reportClock.start();
+      _report = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (!_closed) _summary();
+      });
+      return s;
+    } catch (e) {
+      _log('could not start after ${msSince(clock)}: $e');
+      rethrow;
+    }
+  }
+
+  Future<CameraStatus> _start(Stopwatch clock) async {
     String? tapoProblem;
     if (!camera.isTapo) {
       // Any other RTSP camera: listen only.
     } else if (camera.cloudPassword.isNotEmpty) {
       final tapo = TapoClient(
+        name: camera.name,
         host: camera.host,
         port: camera.port,
         cloudPassword: camera.cloudPassword,
@@ -236,7 +302,10 @@ class CameraSession {
           rate: a.streamType == streamTypePcmuTapo ? 16000 : 8000,
         ),
         onClosed: (e) {
-          if (!_closed) onClosed(e);
+          if (!_closed) {
+            _log('the Tapo stream ended: $e');
+            onClosed(e);
+          }
         },
       );
       // Listen and talk are two connections: open them together.
@@ -262,6 +331,10 @@ class CameraSession {
         tapoProblem = _failed('listen', tapo.listenStep, clock, e);
         // Also drops the talk connection if it's still opening.
         tapo.close();
+        _log(
+          'Tapo stream failed: $tapoProblem'
+          '${camera.rtspUser.isEmpty ? '' : '; trying RTSP (listen only)'}',
+        );
       }
     } else {
       tapoProblem = 'no cloud password set';
@@ -275,6 +348,7 @@ class CameraSession {
       );
     }
     final rtsp = RtspAudioClient(
+      name: camera.name,
       host: camera.host,
       port: camera.rtspPort,
       path: camera.rtspPath,
@@ -282,7 +356,10 @@ class CameraSession {
       password: camera.rtspPassword,
       onAudio: _g711,
       onClosed: (e) {
-        if (!_closed) onClosed(e);
+        if (!_closed) {
+          _log('the RTSP stream ended: $e');
+          onClosed(e);
+        }
       },
     );
     final rtspStarted = clock.elapsed;
@@ -339,10 +416,17 @@ class CameraSession {
   void sendAudio(Int16List pcm16k) {
     final tapo = _tapo;
     if (_closed || tapo == null || !tapo.canTalk) return;
+    _framesOut++;
+    _peakOut = math.max(_peakOut, _peak(pcm16k));
     tapo.sendAudio(alawEncode(downsample2(pcm16k)));
   }
 
   void close() {
+    if (!_closed && _report != null) {
+      _report!.cancel();
+      _summary();
+      _log('closed ($purpose)');
+    }
     _closed = true;
     _tapo?.close();
     _rtsp?.close();

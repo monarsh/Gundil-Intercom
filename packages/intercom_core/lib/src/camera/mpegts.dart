@@ -14,6 +14,17 @@ const int _sync = 0x47;
 const int streamTypePcmaTapo = 0x90; // G.711 A-law, 8 kHz
 const int streamTypePcmuTapo = 0x91; // G.711 µ-law, 16 kHz (newer firmware)
 
+/// A stream type as words, for the debug log.
+String streamTypeName(int type) => switch (type) {
+  0x1B => 'H.264 video',
+  0x24 => 'H.265 video',
+  0x0F => 'AAC audio (not supported)',
+  0x03 || 0x04 => 'MPEG audio (not supported)',
+  streamTypePcmaTapo => 'G.711 A-law 8 kHz audio',
+  streamTypePcmuTapo => 'G.711 µ-law 16 kHz audio',
+  _ => 'type 0x${type.toRadixString(16)}',
+};
+
 /// One audio chunk from the camera.
 class TsAudio {
   TsAudio(this.streamType, this.payload);
@@ -27,6 +38,13 @@ class TsAudioDemuxer {
   int? _pmtPid;
   final Map<int, int> _audioPids = {}; // pid → stream type
   final Map<int, BytesBuilder> _pes = {};
+
+  /// Every stream the camera's program table lists: pid → stream type
+  /// (for the debug log). Empty until the table arrives.
+  final Map<int, int> streams = {};
+
+  /// Called once, when the program table first arrives.
+  void Function(Map<int, int> streams)? onProgram;
 
   /// Feeds [data]; returns the audio chunks completed by it.
   List<TsAudio> add(Uint8List data) {
@@ -86,15 +104,18 @@ class TsAudioDemuxer {
     final end = (3 + sectionLength - 4).clamp(0, b.length);
     final infoLength = ((b[10] & 0x0F) << 8) | b[11];
     var i = 12 + infoLength;
+    final first = streams.isEmpty;
     while (i + 5 <= end) {
       final type = b[i];
       final pid = ((b[i + 1] & 0x1F) << 8) | b[i + 2];
       final esLength = ((b[i + 3] & 0x0F) << 8) | b[i + 4];
+      streams[pid] = type;
       if (type == streamTypePcmaTapo || type == streamTypePcmuTapo) {
         _audioPids[pid] = type;
       }
       i += 5 + esLength;
     }
+    if (first && streams.isNotEmpty) onProgram?.call(Map.of(streams));
   }
 
   /// The table section after the pointer field.

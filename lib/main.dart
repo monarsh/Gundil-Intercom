@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fvp/fvp.dart' as fvp;
 
+import 'src/app_log.dart';
 import 'src/audio_routes.dart';
 import 'src/intercom_service.dart';
 import 'src/platform_bridge.dart';
@@ -13,6 +14,12 @@ import 'ui/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  setUpAppLog();
+  debugLog(
+    'app',
+    'Gundil Intercom $appVersion starting on ${Platform.operatingSystem} '
+        '${Platform.operatingSystemVersion}',
+  );
   // IP camera pictures (RTSP) on every platform: live, over TCP (works
   // through firewalls and on busy Wi-Fi).
   fvp.registerWith(

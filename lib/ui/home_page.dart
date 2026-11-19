@@ -16,6 +16,7 @@ import 'backup_dialog.dart';
 import 'camera_stream.dart';
 import 'peer_dialog.dart';
 import 'contacts_pane.dart';
+import 'debug_log_page.dart';
 import 'video_view.dart';
 import 'volume_sheet.dart';
 
@@ -498,6 +499,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           leading: Icon(Icons.download),
                           title: Text('Import list'),
                           subtitle: Text('Add peers and cameras from a file'),
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: () => DebugLogPage.open(context, service),
+                        child: const ListTile(
+                          leading: Icon(Icons.bug_report_outlined),
+                          title: Text('Debug log'),
+                          subtitle: Text(
+                            'What the app is doing, to report a problem',
+                          ),
                         ),
                       ),
                     ],

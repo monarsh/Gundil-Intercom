@@ -10,6 +10,7 @@ import 'camera/camera.dart';
 import 'camera/onvif.dart';
 import 'camera/tapo_control.dart';
 import 'contacts_backup.dart';
+import 'debug_log.dart';
 import 'discovery.dart';
 import 'echo_suppressor.dart';
 import 'mixer.dart';
@@ -79,8 +80,9 @@ class PlatformHooks {
 /// node (bin/gundil_node.dart). The Flutter app wraps it in
 /// `IntercomService` (a ChangeNotifier) for the UI.
 class IntercomCore {
-  /// Diagnostic logger (the Flutter app routes this to debugPrint).
-  static void Function(String message) log = print;
+  /// Diagnostic logger: the debug log (see [DebugLog]).
+  static void Function(String message) log = _toDebugLog;
+  static void _toDebugLog(String m) => debugLog('app', m);
 
   IntercomCore({
     required this.selfId,
@@ -1144,7 +1146,12 @@ class IntercomCore {
   /// Tries [cam] without calling it: connects, waits a moment for sound,
   /// and says what works. Throws [CameraException] when nothing does.
   Future<CameraStatus> testCamera(SavedCamera cam) async {
-    final session = CameraSession(cam, onAudio: (_) {}, onClosed: (_) {});
+    final session = CameraSession(
+      cam,
+      onAudio: (_) {},
+      onClosed: (_) {},
+      purpose: 'test',
+    );
     try {
       return await session.start();
     } finally {
@@ -1164,6 +1171,7 @@ class IntercomCore {
     }
     final problems = <String>[];
     String? via, onvifProblem;
+    debugLog('camera', '${cam.name}: restart asked');
     if (cam.rtspUser.isNotEmpty) {
       try {
         await OnvifPtz(
@@ -1175,6 +1183,7 @@ class IntercomCore {
       } catch (e) {
         onvifProblem = '$e';
         problems.add('camera account (ONVIF): $e');
+        debugLog('camera', '${cam.name}: restart via ONVIF failed: $e');
       }
     }
     if (via == null && cam.cloudPassword.isNotEmpty) {
@@ -1186,6 +1195,7 @@ class IntercomCore {
         via = 'the Tapo app\'s command, with the cloud password';
       } catch (e) {
         problems.add('cloud password: $e');
+        debugLog('camera', '${cam.name}: restart via Tapo command failed: $e');
       }
     }
     if (via == null) {
@@ -1195,6 +1205,7 @@ class IntercomCore {
             : 'Could not restart ${cam.name}. ${problems.join('; ')}',
       );
     }
+    debugLog('camera', '${cam.name}: restarting via $via');
     // It's going away: end a call with it and show it offline until the
     // checks (every 10 s while offline) find it again.
     if (_conversation?.members.containsKey(peerId) ?? false) {
@@ -1372,6 +1383,8 @@ class IntercomCore {
       _cameraProbedAt[cam.peerId] = now;
       () async {
         var ok = false;
+        final tried = <String>[];
+        final clock = Stopwatch()..start();
         // RTSP first: a plain connect and close there is the lightest for
         // the camera.
         for (final port in [
@@ -1386,8 +1399,16 @@ class IntercomCore {
             );
             s.destroy();
             ok = true;
+            tried.add('port $port answered in ${msSince(clock)}');
             break;
-          } catch (_) {}
+          } catch (e) {
+            tried.add(
+              'port $port: ${e is SocketException ? (e.osError?.message ?? e.message) : e}',
+            );
+          }
+        }
+        if (DebugLog.instance.detailed || !ok) {
+          debugLog('check', '${cam.name} (${cam.host}): ${tried.join('; ')}');
         }
         final p = _peers[cam.peerId];
         if (p == null || _shutDown) return;
@@ -1401,6 +1422,11 @@ class IntercomCore {
         }
         if (p.reachable == ok) return;
         p.reachable = ok;
+        debugLog(
+          'check',
+          '${cam.name} is now ${ok ? 'online' : 'offline'}'
+              '${ok ? '' : ' (no answer twice in a row)'}',
+        );
         changed();
       }();
     }
@@ -1427,6 +1453,11 @@ class IntercomCore {
     if (ended != null) {
       final wait = ended.add(cameraReconnectDelay).difference(DateTime.now());
       if (wait > Duration.zero) {
+        debugLog(
+          'camera',
+          '${cam.name}: waiting ${wait.inMilliseconds} ms for the camera to '
+              'close the last call first',
+        );
         await Future<void>.delayed(wait);
         if (!stillCalling() || _cameraSessions.containsKey(id)) return;
       }
@@ -1473,6 +1504,10 @@ class IntercomCore {
         session.close();
         if (!stillCalling()) return;
         if (_cameraRefused(e) && DateTime.now().isBefore(giveUp)) {
+          debugLog(
+            'camera',
+            '${cam.name}: connection refused (busy?), trying again in 1 s',
+          );
           await Future<void>.delayed(const Duration(seconds: 1));
           if (!stillCalling() || _cameraSessions.containsKey(id)) return;
           continue;
@@ -2487,6 +2522,10 @@ class IntercomCore {
     conv.rosters.remove(id);
     final cameraSession = _cameraSessions.remove(id);
     if (cameraSession != null) {
+      debugLog(
+        'camera',
+        '${displayName(id)}: call ended${reason == null ? '' : ' ($reason)'}',
+      );
       cameraSession.close();
       _cameraEndedAt[id] = DateTime.now();
     }
@@ -2601,6 +2640,10 @@ class IntercomCore {
           final session = _cameraSessions[id];
           if (session == null ||
               now.difference(session.lastData) > memberTimeout) {
+            debugLog(
+              'camera',
+              '${displayName(id)}: ${session == null ? 'no session' : 'nothing received for ${now.difference(session.lastData).inSeconds} s'}; ending the call',
+            );
             _removeMember(
               id,
               reason: 'Lost connection to ${displayName(id)}',
