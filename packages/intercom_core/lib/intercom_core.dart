@@ -4,6 +4,7 @@ library;
 export 'src/audio_engine.dart';
 export 'src/camera/camera.dart';
 export 'src/camera/onvif.dart';
+export 'src/camera/rtsp_client.dart' show checkRtsp;
 export 'src/camera/tapo_control.dart';
 export 'src/contacts_backup.dart';
 export 'src/debug_log.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../src/intercom_service.dart';
 import 'camera_dialog.dart';
+import 'camera_reboot.dart';
 import 'group_dialog.dart';
 import 'peer_dialog.dart';
 import 'widgets.dart';
@@ -382,7 +383,7 @@ class PeerList extends StatelessWidget {
       icon: const Icon(Icons.more_vert),
       onSelected: (a) => switch (a) {
         _PeerAction.edit => _edit(context, e),
-        _PeerAction.reboot => _reboot(context, cam!),
+        _PeerAction.reboot => confirmRebootCamera(context, service, cam!),
         _PeerAction.remove => _remove(context, e),
       },
       itemBuilder: (_) => [
@@ -469,37 +470,6 @@ class PeerList extends StatelessWidget {
       }
     } on ArgumentError catch (err) {
       if (context.mounted) _snack(context, '${err.message}', error: true);
-    }
-  }
-
-  Future<void> _reboot(BuildContext context, SavedCamera cam) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Reboot ${cam.name}?'),
-        content: const Text(
-          'The camera restarts and is offline for about a minute. A call '
-          'with it ends, and the picture comes back when it\'s up again.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reboot'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    _snack(context, 'Asking ${cam.name} to restart…');
-    try {
-      final msg = await service.rebootCamera(cam.peerId);
-      if (context.mounted) _snack(context, msg);
-    } on CameraException catch (err) {
-      if (context.mounted) _snack(context, err.message, error: true);
     }
   }
 

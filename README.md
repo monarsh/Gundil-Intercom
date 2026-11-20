@@ -61,6 +61,12 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
     press one to turn the camera a step, hold it to keep turning. It uses
     ONVIF (port 2020) with the camera account. Tapo cameras also have an
     **SD/HD** switch on the picture.
+  - **When the picture won't open**, the app asks the camera itself, step
+    by step, and shows under *No picture* where it stopped (also in the
+    debug log): port closed, connected but never answering (stuck), camera
+    account refused, or no free stream (too many viewers). If a Tapo that
+    shows online fails 3 times in a row, the picture asks *"The camera
+    isn't answering. Reboot camera?"*, the same as ⋮ → **Reboot camera**.
   - The **Test** button in the dialog says what works. The headless Pi node
     keeps cameras for calls, but shows no pictures.
 - **Export / import the list**: ⋮ → **Export list** saves the peers and

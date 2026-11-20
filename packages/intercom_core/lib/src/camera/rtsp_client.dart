@@ -13,9 +13,12 @@ import '../debug_log.dart';
 import 'byte_reader.dart';
 
 class RtspException implements Exception {
-  RtspException(this.message, {this.badLogin = false});
+  RtspException(this.message, {this.badLogin = false, this.status = 0});
   final String message;
   final bool badLogin;
+
+  /// The camera's answer code (0: none).
+  final int status;
 
   @override
   String toString() => message;
@@ -145,7 +148,9 @@ class RtspAudioClient {
         badLogin: true,
       );
     }
-    if (r.$1 != 200) throw RtspException('RTSP $method failed (${r.$1})');
+    if (r.$1 != 200) {
+      throw RtspException('RTSP $method failed (${r.$1})', status: r.$1);
+    }
     return r;
   }
 
@@ -304,6 +309,75 @@ class RtspAudioClient {
     }
   }
 
+  /// See [checkRtsp].
+  Future<String> _check(Duration wait) async {
+    final clock = Stopwatch()..start();
+    String secs() =>
+        '${(clock.elapsedMilliseconds / 1000).toStringAsFixed(1)} s';
+    var connected = false;
+    var step = 'OPTIONS';
+    String result;
+    try {
+      _log('check: connecting to $host:$port');
+      _socket = await Socket.connect(host, port, timeout: wait);
+      connected = true;
+      _socket!.done.catchError((Object _) {});
+      _reader = ByteReader(_socket!);
+      _log('check: connected in ${secs()}');
+      await _request('OPTIONS', _url).timeout(wait);
+      step = 'DESCRIBE';
+      final (_, _, sdp) = await _request(
+        'DESCRIBE',
+        _url,
+        'Accept: application/sdp\r\n',
+      ).timeout(wait);
+      final tracks = [
+        for (final line in const LineSplitter().convert(sdp))
+          if (line.startsWith('a=rtpmap:'))
+            line.substring(line.indexOf(' ') + 1).split('/').first,
+      ];
+      result =
+          'the camera answers normally (stream: '
+          '${tracks.isEmpty ? 'no tracks listed' : tracks.join(', ')}), so '
+          'it stopped later, in the video player';
+    } on TimeoutException {
+      result = !connected
+          ? 'port $port did not answer within ${wait.inSeconds} s'
+          : step == 'OPTIONS'
+          ? 'port $port accepts the connection but the camera\'s RTSP server '
+                'never answers (it\'s stuck: rebooting the camera helps)'
+          : 'the camera answered OPTIONS but not the request for the '
+                'stream ($step) within ${wait.inSeconds} s (stuck, or busy)';
+    } on RtspException catch (e) {
+      result = e.badLogin
+          ? 'the camera refused the camera account at $step (check the '
+                'user name and password; after several wrong tries a Tapo '
+                'can stop answering for a while)'
+          : switch (e.status) {
+              453 || 503 =>
+                'the camera answered ${e.status} to $step: it has no free '
+                    'stream (too many viewers, e.g. an NVR or Home Assistant)',
+              404 => 'the camera has no stream at $path (404)',
+              _ => 'the camera answered ${e.status} to $step',
+            };
+    } on SocketException catch (e) {
+      result = connected
+          ? 'the camera closed the connection at $step '
+                '(${e.osError?.message ?? e.message})'
+          : 'could not connect to port $port '
+                '(${e.osError?.message ?? e.message})';
+    } catch (e) {
+      result = connected
+          ? 'the connection ended at $step ($e)'
+          : 'could not connect to port $port ($e)';
+    }
+    _log('check after ${secs()}: $result');
+    _closed = true;
+    if (connected) _reader.cancel();
+    _socket?.destroy();
+    return result;
+  }
+
   void close() {
     if (_closed) return;
     _closed = true;
@@ -316,4 +390,33 @@ class RtspAudioClient {
     _reader.cancel();
     _socket?.destroy();
   }
+}
+
+/// Opens [url] the way a video player starts (connect, OPTIONS, DESCRIBE
+/// with the login in the address) without playing it, and says in a few
+/// words how far the camera got: where it stops answering, or what it
+/// refused. Each step waits at most [wait]. Logs every step ("rtsp").
+Future<String> checkRtsp(
+  String url, {
+  String? name,
+  Duration wait = const Duration(seconds: 6),
+}) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.host.isEmpty) return 'not an RTSP address';
+  final colon = uri.userInfo.indexOf(':');
+  final user = colon < 0 ? uri.userInfo : uri.userInfo.substring(0, colon);
+  final pass = colon < 0 ? '' : uri.userInfo.substring(colon + 1);
+  final client = RtspAudioClient(
+    host: uri.host,
+    port: uri.hasPort ? uri.port : 554,
+    path:
+        '${uri.path.isEmpty ? '/' : uri.path}'
+        '${uri.hasQuery ? '?${uri.query}' : ''}',
+    username: Uri.decodeComponent(user),
+    password: Uri.decodeComponent(pass),
+    onAudio: (_, {required alaw, required rate}) {},
+    onClosed: (_) {},
+    name: name,
+  );
+  return client._check(wait);
 }

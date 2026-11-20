@@ -390,4 +390,137 @@ void main() {
     expect(find.text('Reboot camera'), findsNothing);
     expect(find.text('Edit…'), findsOneWidget);
   });
+
+  testWidgets('a Tapo picture that keeps failing: check, then Reboot camera?', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    CameraStream.debugOpen = (url) async {
+      opened.add(url);
+      throw 'reader open error';
+    };
+    final checked = <String>[];
+    CameraStream.check = (url, {name}) async {
+      checked.add(url);
+      return 'port 554 accepts the connection but never answers';
+    };
+    addTearDown(() {
+      CameraStream.debugOpen = null;
+      CameraStream.check = checkRtsp;
+    });
+    final service = IntercomService(
+      selfId: 'me',
+      name: 'Me',
+      audio: FakeAudioEngine(),
+      enableDiscovery: false,
+    );
+    late ServerSocket fake;
+    late SavedCamera cam;
+    // Online: something answers on its Tapo port.
+    await tester.runAsync(() async {
+      fake = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      fake.listen((c) => c.destroy());
+      cam = service.saveCamera(
+        name: 'Sons',
+        host: '127.0.0.1',
+        cloudPassword: 'x',
+        port: fake.port,
+        rtspUser: 'cam',
+        rtspPassword: 'y',
+      );
+      final end = DateTime.now().add(const Duration(seconds: 5));
+      while (!(service.peer(cam.peerId)?.online ?? false) &&
+          DateTime.now().isBefore(end)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    });
+    expect(service.peer(cam.peerId)!.online, isTrue);
+    final viewer = CameraViewer()..show(cam.peerId);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CameraStage(service: service, viewer: viewer),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(opened, hasLength(1));
+    expect(checked, hasLength(1));
+    expect(find.textContaining('Check: port 554 accepts'), findsOneWidget);
+    expect(find.textContaining('Reboot camera?'), findsNothing);
+
+    // Two more failures in a row (one every 5 s); the check runs once a
+    // minute at most.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(opened, hasLength(3));
+    expect(checked, hasLength(1));
+    expect(
+      find.text("The camera isn't answering. Reboot camera?"),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Reboot'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reboot Sons?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Reboot camera?'), findsOneWidget);
+
+    // Not now: it doesn't come back for this camera.
+    await tester.tap(find.byTooltip('Not now'));
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.textContaining('Reboot camera?'), findsNothing);
+
+    viewer.stop();
+    await tester.pump();
+    await tester.runAsync(() async {
+      await fake.close();
+      await service.shutdown();
+    });
+  });
+
+  testWidgets('a picture that opens resets the count', (tester) async {
+    var fail = true;
+    CameraStream.debugOpen = (url) async {
+      if (fail) throw 'reader open error';
+    };
+    CameraStream.check = (url, {name}) async => 'stuck';
+    addTearDown(() {
+      CameraStream.debugOpen = null;
+      CameraStream.check = checkRtsp;
+    });
+    final service = IntercomService(
+      selfId: 'me',
+      name: 'Me',
+      audio: FakeAudioEngine(),
+      enableDiscovery: false,
+    );
+    final cam = service.saveCamera(
+      name: 'Gate',
+      host: '127.0.0.1',
+      kind: SavedCamera.kindRtsp,
+      rtspPath: '/live',
+    );
+    final viewer = CameraViewer()..show(cam.peerId);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CameraStage(service: service, viewer: viewer),
+        ),
+      ),
+    );
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 5));
+    }
+    // Not a Tapo: no reboot to offer.
+    expect(find.textContaining('Reboot camera?'), findsNothing);
+    fail = false;
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.textContaining('No picture'), findsNothing);
+    viewer.stop();
+    await tester.pump();
+    await tester.runAsync(service.shutdown);
+  });
 }

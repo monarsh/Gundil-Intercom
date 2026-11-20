@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../src/camera_viewer.dart';
 import '../src/intercom_service.dart';
+import 'camera_reboot.dart';
 
 /// The picture of the camera [viewer] shows, with its name, zoom (buttons,
 /// pinch and drag), a close button, and for a Tapo an SD/HD switch and pan &
@@ -37,6 +38,15 @@ class _CameraStageState extends State<CameraStage> {
   bool _moving = false;
   Timer? _hold;
 
+  /// Openings of the picture that failed in a row; at
+  /// [_askRebootAfter] a Tapo that is online gets "Reboot camera?".
+  static const int _askRebootAfter = 3;
+  int _failStreak = 0;
+  bool _rebootDismissed = false;
+
+  /// When this camera last accepted a reboot: no asking while it restarts.
+  final Stopwatch _sinceReboot = Stopwatch();
+
   CameraViewer get viewer => widget.viewer;
 
   @override
@@ -68,7 +78,71 @@ class _CameraStageState extends State<CameraStage> {
     _panTiltOpen = false;
     _ptzProblem = null;
     _hold?.cancel();
+    _failStreak = 0;
+    _rebootDismissed = false;
+    _sinceReboot
+      ..stop()
+      ..reset();
   }
+
+  void _openFailed() {
+    if (!mounted) return;
+    setState(() => _failStreak++);
+  }
+
+  void _opened() {
+    if (!mounted || _failStreak == 0) return;
+    setState(() => _failStreak = 0);
+  }
+
+  bool _askReboot(SavedCamera cam) =>
+      cam.isTapo &&
+      _failStreak >= _askRebootAfter &&
+      !_rebootDismissed &&
+      !(_sinceReboot.isRunning && _sinceReboot.elapsed.inMinutes < 3) &&
+      (widget.service.peer(cam.peerId)?.online ?? false);
+
+  Future<void> _reboot(SavedCamera cam) async {
+    final ok = await confirmRebootCamera(context, widget.service, cam);
+    if (!ok || !mounted) return;
+    setState(() {
+      _failStreak = 0;
+      _sinceReboot
+        ..reset()
+        ..start();
+    });
+  }
+
+  Widget _rebootPrompt(SavedCamera cam) => Material(
+    color: Colors.black87,
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.only(left: 12),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber, color: Colors.amberAccent, size: 20),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'The camera isn\'t answering. Reboot camera?',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _reboot(cam),
+            style: TextButton.styleFrom(foregroundColor: Colors.amberAccent),
+            child: const Text('Reboot'),
+          ),
+          IconButton(
+            tooltip: 'Not now',
+            color: Colors.white70,
+            onPressed: () => setState(() => _rebootDismissed = true),
+            icon: const Icon(Icons.close, size: 20),
+          ),
+        ],
+      ),
+    ),
+  );
 
   double get _scale => _zoom.value.getMaxScaleOnAxis();
 
@@ -234,6 +308,8 @@ class _CameraStageState extends State<CameraStage> {
                                   child: CameraStream(
                                     key: ValueKey(url),
                                     url: url,
+                                    onOpened: _opened,
+                                    onOpenFailed: _openFailed,
                                     name:
                                         '${cam.name} '
                                                 '${cam.isTapo ? (viewer.hd ? 'HD' : 'SD') : ''}'
@@ -309,6 +385,13 @@ class _CameraStageState extends State<CameraStage> {
                     ],
                   ),
                 ),
+                if (url != null && _askReboot(cam))
+                  Positioned(
+                    left: 8,
+                    right: 8,
+                    top: 52,
+                    child: _rebootPrompt(cam),
+                  ),
                 if (_panTiltOpen && cam.canPanTilt)
                   Positioned(right: 12, bottom: 12, child: _pad(cam)),
                 if (_panTiltOpen && _ptzProblem != null)
@@ -333,16 +416,33 @@ class _CameraStageState extends State<CameraStage> {
 /// Plays an RTSP stream (no sound: the camera is heard through a call).
 /// Tries again by itself while the camera can't be reached.
 class CameraStream extends StatefulWidget {
-  const CameraStream({super.key, required this.url, this.name = 'camera'});
+  const CameraStream({
+    super.key,
+    required this.url,
+    this.name = 'camera',
+    this.onOpened,
+    this.onOpenFailed,
+  });
 
   final String url;
 
   /// Who this is in the debug log ("Porch SD").
   final String name;
 
+  /// The picture started; opening it failed (each attempt).
+  final VoidCallback? onOpened, onOpenFailed;
+
   /// Tests: shows this instead of a real player.
   @visibleForTesting
   static Widget Function(String url)? debugPlayer;
+
+  /// Tests: stands in for opening the player (throws = it failed).
+  @visibleForTesting
+  static Future<void> Function(String url)? debugOpen;
+
+  /// Walks through the RTSP steps after a failure ([checkRtsp]).
+  @visibleForTesting
+  static Future<String> Function(String url, {String? name}) check = checkRtsp;
 
   @override
   State<CameraStream> createState() => _CameraStreamState();
@@ -350,7 +450,15 @@ class CameraStream extends StatefulWidget {
 
 class _CameraStreamState extends State<CameraStream> {
   VideoPlayerController? _player;
+
+  /// The attempt in progress: answers from older ones are ignored.
+  Object? _current;
   String? _problem;
+
+  /// What the last RTSP check found, and when one last ran.
+  String? _checkResult;
+  bool _checking = false;
+  final Stopwatch _sinceCheck = Stopwatch();
   bool _ready = false;
   Timer? _retry;
   bool _disposed = false;
@@ -392,8 +500,8 @@ class _CameraStreamState extends State<CameraStream> {
   }
 
   Future<void> _open() async {
-    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-    _player = c;
+    final token = Object();
+    _current = token;
     _clock
       ..reset()
       ..start();
@@ -401,10 +509,23 @@ class _CameraStreamState extends State<CameraStream> {
     _buffering = false;
     _shownSize = Size.zero;
     _log('opening ${widget.url} (attempt $_attempt)');
-    c.addListener(() => _onChange(c));
+    final debug = CameraStream.debugOpen;
+    if (debug != null) {
+      try {
+        await debug(widget.url);
+      } catch (e) {
+        _failed(token, e);
+        return;
+      }
+      if (!_disposed && _current == token) _opened();
+      return;
+    }
+    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _player = c;
+    c.addListener(() => _onChange(c, token));
     try {
       await c.initialize().timeout(const Duration(seconds: 15));
-      if (_disposed || _player != c) return;
+      if (_disposed || _current != token) return;
       final v = c.value;
       _log(
         'stream opened in ${_clock.elapsedMilliseconds} ms: '
@@ -414,14 +535,20 @@ class _CameraStreamState extends State<CameraStream> {
       await c.play();
       _lastPosition = null;
       _watch ??= Timer.periodic(const Duration(seconds: 10), (_) => _check());
-      if (mounted) setState(() => _ready = true);
+      _opened();
     } catch (e) {
-      _failed(c, e);
+      _failed(token, e);
     }
   }
 
-  void _onChange(VideoPlayerController c) {
-    if (_disposed || _player != c) return;
+  void _opened() {
+    _checkResult = null;
+    if (mounted) setState(() => _ready = true);
+    widget.onOpened?.call();
+  }
+
+  void _onChange(VideoPlayerController c, Object token) {
+    if (_disposed || _current != token) return;
     final v = c.value;
     if (v.isBuffering != _buffering) {
       _buffering = v.isBuffering;
@@ -441,16 +568,19 @@ class _CameraStreamState extends State<CameraStream> {
       _shownSize = v.size;
     }
     if (v.hasError) {
-      _failed(c, v.errorDescription ?? 'stream error');
+      _failed(token, v.errorDescription ?? 'stream error');
     } else if (v.isCompleted && _ready) {
-      _failed(c, 'the stream ended');
+      _failed(token, 'the stream ended');
     }
   }
 
-  void _failed(VideoPlayerController c, Object error) {
-    if (_disposed || _player != c) return;
+  void _failed(Object token, Object error) {
+    if (_disposed || _current != token) return;
+    _current = null;
+    final c = _player;
     _player = null;
-    unawaited(c.dispose());
+    if (c != null) unawaited(c.dispose());
+    final wasReady = _ready;
     final secs = (_clock.elapsedMilliseconds / 1000).toStringAsFixed(1);
     final problem = _ready
         ? 'the stream stopped: ${_describe(error)}'
@@ -460,10 +590,34 @@ class _CameraStreamState extends State<CameraStream> {
       _ready = false;
       _problem = problem;
     });
+    if (!wasReady) widget.onOpenFailed?.call();
+    _runCheck();
     _retry?.cancel();
     _retry = Timer(const Duration(seconds: 5), () {
       if (!_disposed) _open();
     });
+  }
+
+  /// The player doesn't say where RTSP stopped: ask the camera ourselves,
+  /// at most once a minute.
+  Future<void> _runCheck() async {
+    if (_checking) return;
+    if (_sinceCheck.isRunning && _sinceCheck.elapsed.inSeconds < 60) return;
+    _checking = true;
+    _sinceCheck
+      ..reset()
+      ..start();
+    _log('checking where the camera stops (RTSP check)');
+    String result;
+    try {
+      result = await CameraStream.check(widget.url, name: widget.name);
+    } catch (e) {
+      result = 'the check failed: $e';
+    }
+    _checking = false;
+    if (_disposed || _ready) return;
+    _log('RTSP check: $result');
+    setState(() => _checkResult = result);
   }
 
   static String _describe(Object e) {
@@ -496,10 +650,13 @@ class _CameraStreamState extends State<CameraStream> {
         ),
       );
     }
+    if (_ready) return const SizedBox.expand(); // Tests (debugOpen).
     return _Message(
       _problem == null
           ? 'Connecting to the camera…'
-          : 'No picture: $_problem\nTrying again…',
+          : 'No picture: $_problem'
+                '${_checkResult == null ? '' : '\nCheck: $_checkResult'}'
+                '\nTrying again…',
       busy: _problem == null,
     );
   }

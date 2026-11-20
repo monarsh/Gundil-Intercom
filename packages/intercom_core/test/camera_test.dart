@@ -807,4 +807,72 @@ void main() {
       expect(found, isFalse);
     });
   });
+
+  group('RTSP check', () {
+    test('a camera that answers: names its tracks', () async {
+      final r = await FakeRtsp.start();
+      addTearDown(r.close);
+      final msg = await checkRtsp('rtsp://cam:secret@127.0.0.1:${r.port}/s');
+      expect(msg, startsWith('the camera answers normally'));
+      expect(msg, contains('H264, PCMA'));
+    });
+
+    test('a wrong camera account', () async {
+      final r = await FakeRtsp.start();
+      addTearDown(r.close);
+      final msg = await checkRtsp('rtsp://cam:nope@127.0.0.1:${r.port}/s');
+      expect(msg, contains('refused the camera account'));
+    });
+
+    test('a stuck server: connects but never answers', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final held = <Socket>[];
+      server.listen(held.add);
+      addTearDown(() async {
+        await server.close();
+        for (final s in held) {
+          s.destroy();
+        }
+      });
+      final msg = await checkRtsp(
+        'rtsp://127.0.0.1:${server.port}/stream2',
+        wait: const Duration(milliseconds: 300),
+      );
+      expect(msg, contains('never answers'));
+    });
+
+    test('no free stream (453)', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((s) {
+        final r = ByteReader(s);
+        () async {
+          try {
+            while (true) {
+              final line = await r.readLine();
+              final h = await r.readHeaders();
+              final code = line.startsWith('OPTIONS')
+                  ? '200 OK'
+                  : '453 Not Enough Bandwidth';
+              s.add(
+                latin1.encode('RTSP/1.0 $code\r\nCSeq: ${h['cseq']}\r\n\r\n'),
+              );
+            }
+          } catch (_) {
+            s.destroy();
+          }
+        }();
+      });
+      addTearDown(server.close);
+      final msg = await checkRtsp('rtsp://127.0.0.1:${server.port}/stream2');
+      expect(msg, contains('no free stream'));
+    });
+
+    test('nothing listening on the port', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = server.port;
+      await server.close();
+      final msg = await checkRtsp('rtsp://127.0.0.1:$port/stream2');
+      expect(msg, startsWith('could not connect to port $port'));
+    });
+  });
 }
