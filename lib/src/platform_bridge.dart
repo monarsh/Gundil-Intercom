@@ -83,6 +83,23 @@ class PlatformBridge {
   static Future<void> setStatus(String title, String text) =>
       _invoke('setStatus', {'title': title, 'text': text});
 
+  /// Android: whether the phone is on Wi-Fi or mobile data (a VPN counts
+  /// as what it runs over). [NetworkKind.unknown] elsewhere.
+  static Future<NetworkKind> networkKind() async {
+    if (!_android) return NetworkKind.unknown;
+    try {
+      return switch (await _channel.invokeMethod<String>('networkKind')) {
+        'wifi' => NetworkKind.wifi,
+        'mobile' => NetworkKind.mobile,
+        _ => NetworkKind.unknown,
+      };
+    } on PlatformException {
+      return NetworkKind.unknown;
+    } on MissingPluginException {
+      return NetworkKind.unknown;
+    }
+  }
+
   /// Many Android devices drop broadcast/multicast packets unless a Wi-Fi
   /// multicast lock is held.
   static Future<void> acquireMulticastLock() => _invoke('acquireMulticastLock');
@@ -154,4 +171,7 @@ class FlutterPlatformHooks extends PlatformHooks {
 
   @override
   Future<void> stopCallAudio() => PlatformBridge.stopCallAudio();
+
+  @override
+  Future<NetworkKind> networkKind() => PlatformBridge.networkKind();
 }

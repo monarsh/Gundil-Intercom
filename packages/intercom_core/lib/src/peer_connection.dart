@@ -165,6 +165,10 @@ class PeerConnection {
   /// Last keep-alive ping sent (managed by the engine).
   DateTime? lastPing;
 
+  /// How often the other side wants idle keep-alives (it saves battery on
+  /// mobile data or Wi-Fi); null: the usual interval.
+  Duration? peerPingEvery;
+
   /// The engine checks this link after a network change: it's closed unless
   /// something arrives before this time.
   DateTime? probeDeadline;

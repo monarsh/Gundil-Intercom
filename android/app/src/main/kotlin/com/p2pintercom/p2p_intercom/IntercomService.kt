@@ -20,8 +20,9 @@ import android.os.PowerManager
  * the background, the screen is off, or after the phone boots.
  *
  * It shows a permanent notification (required by Android), keeps the Flutter
- * engine running, and holds a partial wake lock plus a Wi-Fi lock so audio
- * keeps arriving and playing with the screen off.
+ * engine running, and holds a partial wake lock so calls keep arriving with
+ * the screen off. The low-latency Wi-Fi lock (Wi-Fi power saving off) is
+ * held only during a call ([setCallActive]): idle, Wi-Fi may save power.
  */
 class IntercomService : Service() {
     companion object {
@@ -31,6 +32,9 @@ class IntercomService : Service() {
 
         /** The running service, to update its notification. */
         @Volatile var instance: IntercomService? = null
+
+        /** A call is on: Wi-Fi at full speed (see [setCallActive]). */
+        @Volatile var callActive = false
 
         private const val DEFAULT_TITLE = "Gundil Intercom is ready"
         private const val DEFAULT_TEXT =
@@ -149,13 +153,23 @@ class IntercomService : Service() {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun acquireLocks() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "gundil:intercom").apply {
             setReferenceCounted(false)
             acquire()
         }
+        if (callActive) acquireWifiLock()
+    }
+
+    /** Wi-Fi at full speed while a call is on; power saving otherwise. */
+    fun setCallActive(active: Boolean) {
+        if (active) acquireWifiLock() else releaseWifiLock()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             WifiManager.WIFI_MODE_FULL_LOW_LATENCY
@@ -168,10 +182,14 @@ class IntercomService : Service() {
         }
     }
 
+    private fun releaseWifiLock() {
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
+    }
+
     private fun releaseLocks() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
-        wifiLock?.let { if (it.isHeld) it.release() }
-        wifiLock = null
+        releaseWifiLock()
     }
 }

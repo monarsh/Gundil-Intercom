@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -122,6 +124,7 @@ class GundilApp : Application() {
                         )
                         result.success(null)
                     }
+                    "networkKind" -> result.success(networkKind())
                     "acquireMulticastLock" -> { acquireMulticastLock(); result.success(null) }
                     "releaseMulticastLock" -> { releaseMulticastLock(); result.success(null) }
                     "getBackground" -> result.success(backgroundEnabled)
@@ -199,11 +202,37 @@ class GundilApp : Application() {
     private fun startCallAudio() {
         router.start()
         activity?.setKeepScreenOn(true)
+        IntercomService.callActive = true
+        IntercomService.instance?.setCallActive(true)
     }
 
     private fun stopCallAudio() {
         router.stop()
         activity?.setKeepScreenOn(false)
+        IntercomService.callActive = false
+        IntercomService.instance?.setCallActive(false)
+    }
+
+    /**
+     * "wifi" (also Ethernet), "mobile" or "none": what the phone's traffic
+     * really goes over. A VPN (Tailscale, WireGuard) runs on top of one of
+     * them, so VPN networks are skipped.
+     */
+    @Suppress("DEPRECATION")
+    private fun networkKind(): String {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "none"
+        var mobile = false
+        for (n in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(n) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            ) return "wifi"
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
+        }
+        return if (mobile) "mobile" else "none"
     }
 
     // ------------------------------------------------------------ discovery

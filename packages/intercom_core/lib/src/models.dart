@@ -41,6 +41,10 @@ class Peer {
   /// Last time we heard a discovery beacon from this peer.
   DateTime? lastBeacon;
 
+  /// How often it announces itself, when slower than usual (battery
+  /// saving); null: the usual 2 s.
+  Duration? beaconEvery;
+
   /// Whether a live TCP connection to the peer currently exists.
   bool connected = false;
 
@@ -67,7 +71,14 @@ class Peer {
   bool get online {
     if (connected || reachable) return true;
     final b = lastBeacon;
-    return b != null && DateTime.now().difference(b) < beaconTimeout;
+    if (b == null) return false;
+    final every = beaconEvery;
+    var timeout = beaconTimeout;
+    // Two missed beacons and a little more.
+    if (every != null && every * 2 + const Duration(seconds: 3) > timeout) {
+      timeout = every * 2 + const Duration(seconds: 3);
+    }
+    return DateTime.now().difference(b) < timeout;
   }
 
   String get endpoint => '${address.address}:$port';

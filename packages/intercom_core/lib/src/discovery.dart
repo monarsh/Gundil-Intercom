@@ -14,6 +14,7 @@ class DiscoveryBeacon {
     required this.tcpPort,
     this.version = 1,
     this.leaving = false,
+    this.every,
   });
 
   final String id;
@@ -23,6 +24,10 @@ class DiscoveryBeacon {
   final int tcpPort;
   final int version;
   final bool leaving;
+
+  /// How often the sender announces itself, when slower than usual (it
+  /// saves battery); null: the usual 2 s.
+  final Duration? every;
 }
 
 /// LAN peer discovery via periodic UDP broadcast beacons.
@@ -47,6 +52,12 @@ class Discovery {
   final int port;
   final Duration interval;
 
+  /// How often to announce ourselves (at least [interval]; null: not at
+  /// all, e.g. on mobile data where there's no LAN). Beacons from others
+  /// are still heard.
+  late Duration? announceEvery = interval;
+  DateTime? _lastAnnounce;
+
   RawDatagramSocket? _socket;
   Timer? _timer;
   List<InternetAddress> _targets = [InternetAddress('255.255.255.255')];
@@ -62,6 +73,14 @@ class Discovery {
     await _bind();
     _timer ??= Timer.periodic(interval, (_) {
       if (++_tick % 15 == 0) _refreshTargets();
+      final every = announceEvery;
+      if (every == null) return;
+      final last = _lastAnnounce;
+      if (last != null &&
+          DateTime.now().difference(last) <
+              every - const Duration(milliseconds: 500)) {
+        return;
+      }
       _announce();
     });
   }
@@ -157,6 +176,7 @@ class Discovery {
 
   void _announce() {
     final s = _socket;
+    _lastAnnounce = DateTime.now();
     if (s != null) _send(s);
   }
 
@@ -170,6 +190,9 @@ class Discovery {
         'platform': Platform.operatingSystem,
         'port': tcpPort,
         if (leaving) 'bye': true,
+        // Announcing less often: don't count us as gone between beacons.
+        if (announceEvery != interval)
+          'every': (announceEvery ?? interval).inSeconds,
       }),
     );
     for (final t in _targets) {
@@ -210,6 +233,9 @@ class Discovery {
         tcpPort: port,
         version: (m['v'] as int?) ?? 1,
         leaving: m['bye'] == true,
+        every: m['every'] is int && (m['every'] as int) > 0
+            ? Duration(seconds: (m['every'] as int).clamp(1, 120))
+            : null,
       );
     } catch (_) {
       return null;

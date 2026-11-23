@@ -407,6 +407,24 @@ of recent apps. Other intercoms can connect and hold a two-way conversation
 with the screen off: it auto-answers, and you can hang up from the app. To
 stop it, turn **Run in background** off.
 
+**Battery:** while no call is on, the phone sends as little as it can, and
+more slowly on mobile data, where every packet keeps the radio awake for
+seconds:
+
+| While idle | Wi-Fi | Mobile data (also with a VPN) |
+|---|---|---|
+| Wi-Fi power saving | on (off only during a call) | – |
+| Keep-alive to linked intercoms | every 15 s | every 30 s |
+| Retry of saved intercoms that are offline | every 30 s | every 60 s |
+| LAN announcement | every 10 s | none |
+| Camera online check | every 30 s | every 2 min |
+
+The other intercoms (1.8.3 or newer) follow the phone's pace on the link
+between them. Older ones keep pinging every 5 s, which still works but saves
+less, so update them too. A call starts and rings just as fast; an intercom
+or camera that comes back can take up to a minute to show as online.
+Removing saved intercoms and cameras you no longer use saves more.
+
 Android only lets an app use the microphone in the background if the
 background service was started while the app was on screen. After the phone
 reboots, background mode comes back but the microphone isn't allowed yet:

@@ -58,8 +58,16 @@ enum IntercomEventKind {
 /// and only one incoming talker is played at a time.
 /// Platform-specific hooks. The defaults do nothing, which is right for
 /// desktop and headless use; the Flutter app supplies Android versions.
+/// What the device's traffic goes over (a VPN counts as what it runs
+/// over). Idle, the engine sends less on Wi-Fi and much less on mobile data,
+/// where every packet wakes the radio for seconds.
+enum NetworkKind { unknown, wifi, mobile }
+
 class PlatformHooks {
   const PlatformHooks();
+
+  /// Wi-Fi or mobile data (phones); [NetworkKind.unknown]: no saving.
+  Future<NetworkKind> networkKind() async => NetworkKind.unknown;
 
   /// Asks for microphone permission. Returns true when allowed.
   Future<bool> requestMicrophone() async => true;
@@ -195,6 +203,30 @@ class IntercomCore {
   /// just goes silent, and the peer would look online forever.
   static const Duration linkTimeout = Duration(seconds: 15);
 
+  /// Battery saving while no call is on, by network (see [NetworkKind]):
+  /// keep-alive interval (each side asks the other in its HELLO; a link
+  /// uses the longer of the two and is closed after 3 missed), retries of
+  /// offline saved peers, LAN announcements (null: none) and camera checks.
+  static Duration idlePing(NetworkKind k) => switch (k) {
+    NetworkKind.wifi => const Duration(seconds: 15),
+    NetworkKind.mobile => const Duration(seconds: 30),
+    NetworkKind.unknown => linkPingInterval,
+  };
+  static Duration idleRetry(NetworkKind k, Duration normal) => switch (k) {
+    NetworkKind.wifi => const Duration(seconds: 30),
+    NetworkKind.mobile => const Duration(seconds: 60),
+    NetworkKind.unknown => normal,
+  };
+  static Duration? idleAnnounce(NetworkKind k) => switch (k) {
+    NetworkKind.wifi => const Duration(seconds: 10),
+    NetworkKind.mobile => null,
+    NetworkKind.unknown => const Duration(seconds: 2),
+  };
+  static Duration idleCameraCheck(NetworkKind k) => switch (k) {
+    NetworkKind.mobile => const Duration(minutes: 2),
+    _ => cameraOnlineCheck,
+  };
+
   /// After a network change every link must answer within this long.
   static const Duration probeTimeout = Duration(seconds: 4);
 
@@ -230,6 +262,47 @@ class IntercomCore {
 
   ServerSocket? _server;
   Discovery? _discovery;
+
+  NetworkKind _netKind = NetworkKind.unknown;
+
+  /// What the device is on (phones), which sets the idle battery saving.
+  NetworkKind get networkKind => _netKind;
+
+  /// No call: the time to save battery.
+  bool get _idle => _conversation == null && _cameraSessions.isEmpty;
+
+  /// The keep-alive interval for [c]: ours, or longer if the peer asked.
+  Duration _pingEvery(PeerConnection c) {
+    var d = _idle ? idlePing(_netKind) : linkPingInterval;
+    final asked = c.peerPingEvery;
+    if (asked != null && asked > d) d = asked;
+    return d;
+  }
+
+  DateTime? _lastRetry;
+
+  /// Sets what the device is on (normally found by the platform hook after
+  /// each network change) and tells the peers how often to ping.
+  void setNetworkKind(NetworkKind k) {
+    if (k == _netKind) return;
+    _netKind = k;
+    log(
+      'On ${k.name}: ${k == NetworkKind.unknown ? 'no battery saving' : 'saving battery while idle (keep-alive every ${idlePing(k).inSeconds} s)'}',
+    );
+    _applyAnnounce();
+    for (final c in _links.values.toSet()) {
+      if (!c.isClosed && c.verified) c.send(_hello());
+    }
+  }
+
+  /// LAN announcements: every 2 s normally, less (or none on mobile data)
+  /// while idle.
+  void _applyAnnounce() {
+    _discovery?.announceEvery = _idle
+        ? idleAnnounce(_netKind)
+        : const Duration(seconds: 2);
+  }
+
   Timer? _housekeeping;
   Timer? _reconnect;
   Timer? _netWatch;
@@ -543,11 +616,12 @@ class IntercomCore {
     _probeCameras();
     _housekeeping = Timer.periodic(const Duration(seconds: 1), (_) {
       if (++_cameraTick % 10 == 0) _probeCameras(due: true);
+      _applyAnnounce();
       _checkConversation();
       _keepLinksAlive();
       changed();
     });
-    _reconnect = Timer.periodic(reconnectInterval, (_) => _retrySaved());
+    _reconnect = Timer.periodic(reconnectInterval, (_) => _retrySavedDue());
     _netWatch = Timer.periodic(networkCheckInterval, (_) => _checkNetwork());
     await _checkNetwork();
     _retrySaved();
@@ -625,6 +699,10 @@ class IntercomCore {
       final first = _netFingerprint == null;
       _netFingerprint = fingerprint;
       _localAddresses = addresses;
+      try {
+        final kind = await hooks.networkKind();
+        if (!_shutDown) setNetworkKind(kind);
+      } catch (_) {}
       if (!first && !_shutDown) networkChanged();
     } catch (e) {
       log('Could not list network interfaces: $e');
@@ -723,7 +801,9 @@ class IntercomCore {
       if (c.isClosed || c.legacy || !c.verified) continue;
       final probe = c.probeDeadline;
       final quiet = now.difference(c.lastReceived);
-      if ((probe != null && now.isAfter(probe)) || quiet > linkTimeout) {
+      final every = _pingEvery(c);
+      final timeout = every * 3 > linkTimeout ? every * 3 : linkTimeout;
+      if ((probe != null && now.isAfter(probe)) || quiet > timeout) {
         log(
           'Link to ${c.remoteId ?? c.remoteAddress.address} stopped '
           'answering; closing it',
@@ -732,8 +812,7 @@ class IntercomCore {
         continue;
       }
       final last = c.lastPing;
-      if (quiet >= linkPingInterval &&
-          (last == null || now.difference(last) >= linkPingInterval)) {
+      if (quiet >= every && (last == null || now.difference(last) >= every)) {
         c.lastPing = now;
         c.send(Frame.empty(MessageType.ping));
       }
@@ -1376,7 +1455,8 @@ class IntercomCore {
         // A little early, so a 30 s interval lands on every third tick.
         if (last != null &&
             now.difference(last) <
-                cameraOnlineCheck - const Duration(seconds: 2)) {
+                (_idle ? idleCameraCheck(_netKind) : cameraOnlineCheck) -
+                    const Duration(seconds: 2)) {
           continue;
         }
       }
@@ -1821,7 +1901,24 @@ class IntercomCore {
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
       '${_rng.nextInt(1 << 30).toRadixString(36)}';
 
+  /// The periodic retry of offline saved peers: less often while idle on
+  /// Wi-Fi or mobile data.
+  void _retrySavedDue() {
+    final now = DateTime.now();
+    final every = _idle
+        ? idleRetry(_netKind, reconnectInterval)
+        : reconnectInterval;
+    final last = _lastRetry;
+    // A little early, so the interval lands on a tick of the timer.
+    if (last != null &&
+        now.difference(last) < every - const Duration(milliseconds: 500)) {
+      return;
+    }
+    _retrySaved();
+  }
+
   void _retrySaved() {
+    _lastRetry = DateTime.now();
     for (final s in _saved) {
       final live = s.peerId == null ? null : _peers[s.peerId];
       if (live != null && live.online) continue;
@@ -1962,6 +2059,7 @@ class IntercomCore {
       port: b.tcpPort,
     );
     p.lastBeacon = DateTime.now();
+    p.beaconEvery = b.every;
     p.version = b.version;
   }
 
@@ -2015,6 +2113,10 @@ class IntercomCore {
     if (_localAddresses.isNotEmpty) 'addrs': _localAddresses.toList(),
     // Which groups we have and how recent: the peer sends newer copies.
     'groups': {for (final g in _groups.values) g.id: g.updated},
+    // Battery saving: ping us this rarely while idle (older versions
+    // ignore it and keep pinging every 5 s, which still works).
+    if (idlePing(_netKind) != linkPingInterval)
+      'ping': idlePing(_netKind).inSeconds,
   });
 
   /// Incoming connections whose HELLO we haven't answered yet.
@@ -2154,6 +2256,10 @@ class IntercomCore {
             if (a is String) ?InternetAddress.tryParse(a),
         ].where((a) => a.type == InternetAddressType.IPv4).toList();
       }
+      final ping = m['ping'];
+      c.peerPingEvery = ping is int && ping > 0
+          ? Duration(seconds: ping.clamp(1, 120))
+          : null;
       p.wrongPassword = false;
       _resolveSaved(p);
       _syncGroups(id, m['groups']);
