@@ -384,6 +384,7 @@ turned off), the window comes back by itself.
   `~/.config/autostart/gundil-intercom.desktop`. It starts hidden in the
   tray (or minimized when the desktop has no tray).
 - **Android**: see *Background mode on Android* below.
+- **iPhone**: see *Background mode on iPhone* below.
 
 Without the installer, you can do it by hand on Windows: press **Win+R**, type
 `shell:startup`, and put a shortcut to `gundil_intercom.exe` in that folder.
@@ -443,6 +444,25 @@ How it works: `android/.../IntercomService.kt` is a foreground service
 
 Set `P2P_INTERCOM_PROFILE=<name>` to run several separate instances on the same
 computer, for example while testing.
+
+### Background mode on iPhone
+
+iOS pauses an app soon after it leaves the screen. To keep the iPhone
+answering calls with the screen locked, open **⚙ Settings → Run in
+background**.
+
+- **How it works:** the app plays silence in the background (iOS lets an app
+  that plays sound keep running). The microphone stays closed until a call,
+  so iOS shows no microphone indicator.
+- **Other apps:** music and videos in other apps keep playing. During a call
+  the intercom takes the sound, as before.
+- **Interruptions:** after a phone call, Siri or an alarm, it starts again by
+  itself.
+- **Battery:** it costs some battery, because the iPhone never fully sleeps
+  while it's on.
+- **When it stops:** iOS can still close the app when it runs short of memory,
+  or when you swipe it away in the app switcher. Open it once to start again;
+  the setting is remembered.
 
 ### Firewall and network notes
 

@@ -16,11 +16,14 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "GundilPlatform") {
       GundilPlatform.register(messenger: registrar.messenger())
     }
+    // "Run in background" was on: keep running from the start.
+    if BackgroundKeeper.shared.enabled { BackgroundKeeper.shared.start() }
   }
 }
 
 /// The "p2p_intercom/platform" channel on iOS (lib/src/platform_bridge.dart):
-/// only the microphone permission; the rest is Android-only.
+/// the microphone permission, call audio and "Run in background"; the rest
+/// is Android-only.
 enum GundilPlatform {
   static var channel: FlutterMethodChannel?
 
@@ -33,11 +36,20 @@ enum GundilPlatform {
           DispatchQueue.main.async { result(granted) }
         }
       case "startCallAudio":
+        BackgroundKeeper.shared.callStarted()
         EarDetection.shared.start()
         result(nil)
       case "stopCallAudio":
         EarDetection.shared.stop()
+        BackgroundKeeper.shared.callEnded()
         result(nil)
+      case "getBackground":
+        result(BackgroundKeeper.shared.enabled)
+      case "setBackground":
+        let on = (call.arguments as? [String: Any])?["enabled"] as? Bool ?? false
+        BackgroundKeeper.shared.enabled = on
+        if on { BackgroundKeeper.shared.start() } else { BackgroundKeeper.shared.stop() }
+        result(BackgroundKeeper.shared.enabled)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -140,5 +152,144 @@ final class EarDetection {
     } catch {
       NSLog("Ear detection: could not switch back: \(error)")
     }
+  }
+}
+
+/// "Run in background" on iPhone. iOS keeps an app with the audio background
+/// mode (Info.plist) running while it plays sound, so this plays a silent
+/// loop, output only (no microphone indicator), and the intercom keeps
+/// answering with the screen locked. Idle, the session mixes with other
+/// apps, so their music keeps playing; during a call it takes the audio as
+/// before. The audio library (packages/intercom_audio) owns the session and
+/// its category: this only adds or removes "mix with others".
+final class BackgroundKeeper {
+  static let shared = BackgroundKeeper()
+
+  private static let key = "gundil.background"
+  private var player: AVAudioPlayer?
+  private var running = false
+  private var inCall = false
+  private var observers: [NSObjectProtocol] = []
+
+  /// Same as the audio library sets up: talk and listen, loudspeaker,
+  /// Bluetooth headsets allowed.
+  private let callOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
+
+  var enabled: Bool {
+    get { UserDefaults.standard.bool(forKey: BackgroundKeeper.key) }
+    set { UserDefaults.standard.set(newValue, forKey: BackgroundKeeper.key) }
+  }
+
+  func start() {
+    if !running {
+      running = true
+      observe()
+    }
+    configureSession()
+    play()
+  }
+
+  func stop() {
+    guard running else { return }
+    running = false
+    player?.stop()
+    player = nil
+    for o in observers { NotificationCenter.default.removeObserver(o) }
+    observers = []
+    // Back to the library's own options; the session stays active (it's
+    // the library's).
+    if !inCall { setOptions(callOptions) }
+  }
+
+  func callStarted() {
+    inCall = true
+    if running { setOptions(callOptions) }
+  }
+
+  func callEnded() {
+    inCall = false
+    guard running else { return }
+    configureSession()
+    play()
+  }
+
+  private func configureSession() {
+    setOptions(inCall ? callOptions : callOptions.union(.mixWithOthers))
+    do {
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      NSLog("Background: could not activate the audio session: \(error)")
+    }
+  }
+
+  private func setOptions(_ options: AVAudioSession.CategoryOptions) {
+    let session = AVAudioSession.sharedInstance()
+    if session.category == .playAndRecord && session.categoryOptions == options { return }
+    do {
+      try session.setCategory(.playAndRecord, mode: .default, options: options)
+    } catch {
+      NSLog("Background: could not set the audio session: \(error)")
+    }
+  }
+
+  private func play() {
+    if player == nil {
+      do {
+        let p = try AVAudioPlayer(data: BackgroundKeeper.silentWav())
+        p.numberOfLoops = -1
+        p.volume = 0
+        p.prepareToPlay()
+        player = p
+      } catch {
+        NSLog("Background: could not create the silent player: \(error)")
+        return
+      }
+    }
+    if player?.isPlaying == false { player?.play() }
+  }
+
+  private func observe() {
+    let center = NotificationCenter.default
+    observers.append(center.addObserver(
+      forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      guard let self = self, self.running,
+        let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+        let type = AVAudioSession.InterruptionType(rawValue: raw)
+      else { return }
+      // A phone call, Siri or an alarm took the audio: start again once
+      // it's over, whether or not iOS suggests resuming.
+      if type == .ended {
+        self.configureSession()
+        self.play()
+      }
+    })
+    observers.append(center.addObserver(
+      forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self = self, self.running else { return }
+      self.player = nil
+      self.configureSession()
+      self.play()
+    })
+  }
+
+  /// One second of silence: 16-bit mono PCM WAV at 8 kHz.
+  private static func silentWav() -> Data {
+    let rate: UInt32 = 8000
+    let samples = Int(rate)
+    let dataSize = UInt32(samples * 2)
+    var d = Data()
+    func u32(_ v: UInt32) { var x = v.littleEndian; d.append(Data(bytes: &x, count: 4)) }
+    func u16(_ v: UInt16) { var x = v.littleEndian; d.append(Data(bytes: &x, count: 2)) }
+    d.append("RIFF".data(using: .ascii)!)
+    u32(36 + dataSize)
+    d.append("WAVE".data(using: .ascii)!)
+    d.append("fmt ".data(using: .ascii)!)
+    u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16)
+    d.append("data".data(using: .ascii)!)
+    u32(dataSize)
+    d.append(Data(count: Int(dataSize)))
+    return d
   }
 }

@@ -284,14 +284,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     value: tray,
                     onChanged: (v) => setLocal(() => tray = v),
                   ),
-                if (Platform.isAndroid) ...[
+                if (PlatformBridge.hasBackgroundMode) ...[
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Run in background'),
-                    subtitle: const Text(
-                      'Keeps receiving when the app is closed or the screen '
-                      'is off. Shows a notification.',
+                    subtitle: Text(
+                      Platform.isAndroid
+                          ? 'Keeps receiving when the app is closed or the '
+                                'screen is off. Shows a notification.'
+                          : 'Keeps answering calls with the screen locked. '
+                                'Plays silence in the background, so it uses '
+                                'some battery.',
                     ),
                     value: background,
                     onChanged: (v) => setLocal(() {
@@ -299,6 +303,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       if (!v) boot = false;
                     }),
                   ),
+                ],
+                if (Platform.isAndroid) ...[
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Start when phone turns on'),
@@ -381,10 +387,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _focus.requestFocus();
   }
 
-  /// Turns Android background mode on/off, asking for what it needs.
+  /// Turns background mode on/off, asking for what it needs (Android).
   Future<void> _setBackground(bool on) async {
-    if (!on) {
-      await PlatformBridge.setBackground(false);
+    if (!on || !Platform.isAndroid) {
+      await PlatformBridge.setBackground(on);
       return;
     }
     // Android 13+: without this the notification is hidden (the service

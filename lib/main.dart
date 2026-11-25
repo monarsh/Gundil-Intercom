@@ -48,6 +48,11 @@ Future<void> main() async {
     onCamerasChanged: (list) => settings.cameras = list,
   );
   await service.start();
+  // iPhone: the audio engine set up its audio session just now; background
+  // mode puts back "mix with other apps" on top of it.
+  if (Platform.isIOS && await PlatformBridge.getBackground()) {
+    await PlatformBridge.setBackground(true);
+  }
   if (WindowBridge.supported) {
     await WindowBridge.setTrayEnabled(settings.minimizeToTray);
   }

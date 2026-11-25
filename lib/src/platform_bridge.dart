@@ -105,14 +105,29 @@ class PlatformBridge {
   static Future<void> acquireMulticastLock() => _invoke('acquireMulticastLock');
   static Future<void> releaseMulticastLock() => _invoke('releaseMulticastLock');
 
-  // ------------------------------------------------- Android background mode
+  // ---------------------------------------------- background mode (phones)
 
-  /// Whether the background service (persistent notification) is enabled.
-  static Future<bool> getBackground() => _get('getBackground');
+  /// "Run in background" exists here: Android (a background service with a
+  /// notification) and iPhone (a silent audio loop keeps the app running).
+  static bool hasBackgroundMode = Platform.isAndroid || Platform.isIOS;
 
-  /// Starts/stops the background service and remembers the choice.
+  /// Whether background mode is on.
+  static Future<bool> getBackground() => _getPhone('getBackground');
+
+  /// Turns background mode on/off and remembers the choice.
   static Future<bool> setBackground(bool enabled) =>
-      _get('setBackground', {'enabled': enabled});
+      _getPhone('setBackground', {'enabled': enabled});
+
+  static Future<bool> _getPhone(String method, [Object? args]) async {
+    if (!_android && !Platform.isIOS) return false;
+    try {
+      return await _channel.invokeMethod<bool>(method, args) ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   /// Whether the background service starts after the phone boots.
   static Future<bool> getStartOnBoot() => _get('getStartOnBoot');
