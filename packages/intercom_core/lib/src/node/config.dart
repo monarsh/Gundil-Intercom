@@ -35,6 +35,10 @@ class NodeConfig {
     'password':
         'Intercom password: only intercoms with the same password can '
         'connect (default: none; calls are encrypted either way)',
+    'internet':
+        'Internet calls (STUN + UDP hole punching) through public Nostr '
+        'relays: true/false (default false; needs a password of 10+ '
+        'characters)',
     'peers': 'Comma-separated host[:port] list to add by IP (optional)',
     'button-gpio':
         'GPIO number of the connect / hang-up button (e.g. 6 = PA6, pin 7)',

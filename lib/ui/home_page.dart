@@ -172,6 +172,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     var background = backgroundWas;
     final bootWas = await PlatformBridge.getStartOnBoot();
     var boot = bootWas;
+    var internet = service.internetMode;
+    String? netCheck;
+    var checking = false;
     if (!mounted) return;
     final saved = await showDialog<bool>(
       context: context,
@@ -315,6 +318,59 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         : null,
                   ),
                 ],
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Internet calls (STUN + UDP hole punching)',
+                  ),
+                  subtitle: Text(
+                    'Reach intercoms with the same password from anywhere, '
+                    'without a VPN. Uses public Nostr relays and STUN '
+                    'servers; calls go directly between the devices, '
+                    'encrypted. Needs a password of at least '
+                    '${IntercomCore.internetMinPassword} characters.',
+                  ),
+                  value: internet,
+                  onChanged: (v) => setLocal(() {
+                    internet = v;
+                    netCheck = null;
+                  }),
+                ),
+                if (internet && service.internetMode) ...[
+                  Text(
+                    service.internetProblem != null
+                        ? 'Not running: ${service.internetProblem}'
+                        : 'Relays: ${service.internetRelaysConnected} of '
+                              '${service.internetRelaysTotal} connected',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: checking
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.network_check),
+                      label: const Text('Check network'),
+                      onPressed: checking
+                          ? null
+                          : () async {
+                              setLocal(() => checking = true);
+                              final r = await service.checkInternet();
+                              setLocal(() {
+                                checking = false;
+                                netCheck = _describeCheck(r);
+                              });
+                            },
+                    ),
+                  ),
+                  if (netCheck != null)
+                    Text(netCheck!, style: Theme.of(ctx).textTheme.bodySmall),
+                ],
                 const SizedBox(height: 16),
                 Text('This device', style: Theme.of(ctx).textTheme.titleSmall),
                 const SizedBox(height: 4),
@@ -381,10 +437,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           );
         }
       }
+      if (internet != service.internetMode) {
+        try {
+          await service.setInternetMode(internet);
+          if (mounted && internet) {
+            _showMessage(
+              'Internet calls on. Turn them on on the other intercoms too '
+              '(same password).',
+            );
+          }
+        } on ArgumentError catch (e) {
+          if (mounted) _showMessage('${e.message}');
+        }
+        widget.settings.internetMode = service.internetMode;
+      }
     }
     nameCtl.dispose();
     passwordCtl.dispose();
     _focus.requestFocus();
+  }
+
+  static String _describeCheck(NetworkCheck? r) {
+    if (r == null) return 'Internet calls are not running.';
+    final nat = switch (r.nat) {
+      NatType.cone ||
+      NatType.open => 'direct calls likely (your NAT keeps one public port)',
+      NatType.symmetric =>
+        'direct calls may fail (strict NAT: a new public port per '
+            'destination)',
+      NatType.unknown => 'unknown (no STUN server answered)',
+    };
+    return 'Relays: ${r.relays} of ${r.relaysTotal} connected\n'
+        'NAT: $nat\n'
+        'Public address: ${r.publicAddress ?? 'unknown'}';
   }
 
   /// Turns background mode on/off, asking for what it needs (Android).

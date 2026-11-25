@@ -46,6 +46,9 @@ Future<void> main() async {
     onGroupsChanged: (list) => settings.groups = list,
     cameras: settings.cameras,
     onCamerasChanged: (list) => settings.cameras = list,
+    internetMode: settings.internetMode,
+    internetKey: settings.internetKey,
+    onInternetKeyChanged: (k) => settings.internetKey = k,
   );
   await service.start();
   // iPhone: the audio engine set up its audio session just now; background

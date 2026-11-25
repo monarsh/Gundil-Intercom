@@ -83,6 +83,14 @@ class Settings {
   String get password => _prefs.getString('${_p}password') ?? '';
   set password(String v) => _prefs.setString('${_p}password', v);
 
+  /// Internet calls (STUN + UDP hole punching), off by default.
+  bool get internetMode => _prefs.getBool('${_p}internetMode') ?? false;
+  set internetMode(bool v) => _prefs.setBool('${_p}internetMode', v);
+
+  /// This device's Nostr key (hex), made the first time Internet calls run.
+  String get internetKey => _prefs.getString('${_p}internetKey') ?? '';
+  set internetKey(String v) => _prefs.setString('${_p}internetKey', v);
+
   /// Speaker and microphone volume (1 = 100%, up to 2 = 200%).
   double get speakerVolume => _prefs.getDouble('${_p}speakerVolume') ?? 1;
   set speakerVolume(double v) => _prefs.setDouble('${_p}speakerVolume', v);

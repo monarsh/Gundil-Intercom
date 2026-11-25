@@ -320,6 +320,8 @@ class PeerList extends StatelessWidget {
                 MemberState.connected
                     when service.cameraCanTalk(id!) == false =>
                   'Connected · listen only',
+                MemberState.connected when service.routeTo(id!) == 'internet' =>
+                  'Connected · 🌐 internet',
                 MemberState.connected => 'Connected',
                 MemberState.calling => 'Calling…',
                 MemberState.ringing => 'Wants to talk',
@@ -372,8 +374,14 @@ class PeerList extends StatelessWidget {
 
   /// "192.168.1.5" or, with an alternate address, "192.168.1.5 · 100.64.0.7".
   static String _hosts(PeerEntry e) {
+    final live = e.live;
+    // Known only through the relays: no address to show.
+    if (live != null && live.internet && live.address.address == '0.0.0.0') {
+      return '🌐 Internet';
+    }
     final alt = e.altHost;
-    return alt.isEmpty || alt == e.host ? e.host : '${e.host} · $alt';
+    final hosts = alt.isEmpty || alt == e.host ? e.host : '${e.host} · $alt';
+    return live != null && live.internet ? '$hosts · 🌐' : hosts;
   }
 
   Widget _menu(BuildContext context, PeerEntry e) {

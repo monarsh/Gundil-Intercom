@@ -30,6 +30,11 @@ class IntercomService extends IntercomCore with ChangeNotifier {
     super.cameras,
     super.onCamerasChanged,
     super.reconnectInterval,
+    super.internetMode,
+    super.internetKey,
+    super.onInternetKeyChanged,
+    super.internetRelays,
+    super.stunServers,
   }) : super(hooks: const FlutterPlatformHooks());
 
   @override

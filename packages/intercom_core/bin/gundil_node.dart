@@ -71,6 +71,12 @@ Future<void> main(List<String> args) async {
     onGroupsChanged: (list) => state.save(groups: list),
     cameras: state.cameras,
     onCamerasChanged: (list) => state.save(cameras: list),
+    internetMode: cfg.flag('internet', fallback: false),
+    internetKey: state.internetKey,
+    onInternetKeyChanged: (k) {
+      state.internetKey = k;
+      state.save();
+    },
   );
 
   // Fail early (with a clear message) if the audio library or devices are
@@ -110,6 +116,13 @@ Future<void> main(List<String> args) async {
     'Gundil Intercom node $appVersion "$name" listening on TCP ${core.listenPort}, '
     'discovery ${core.discoveryRunning ? 'on' : 'OFF'}',
   );
+  if (core.internetMode) {
+    log(
+      core.internetProblem == null
+          ? 'Internet calls on (public Nostr relays + STUN)'
+          : 'WARNING: Internet calls not running: ${core.internetProblem}',
+    );
+  }
 
   final target = cfg.str('target') ?? 'everyone';
   final node = _Node(core, target);
@@ -396,6 +409,9 @@ class _Node {
 class _NodeState {
   _NodeState(this.file, this.deviceId, this.saved, this.groups, this.cameras);
 
+  /// This node's Nostr key for Internet calls (hex), made on first use.
+  String internetKey = '';
+
   final File file;
   final String deviceId;
   List<SavedPeer> saved;
@@ -437,6 +453,12 @@ class _NodeState {
       ).join();
     }
     final s = _NodeState(file, id, saved, groups, cameras);
+    try {
+      final json = jsonDecode(file.readAsStringSync());
+      if (json is Map && json['internetKey'] is String) {
+        s.internetKey = json['internetKey'] as String;
+      }
+    } catch (_) {}
     s.save();
     return s;
   }
@@ -457,6 +479,7 @@ class _NodeState {
           'savedPeers': [for (final s in this.saved) s.toJson()],
           'groups': [for (final g in this.groups) g.toJson()],
           'cameras': [for (final c in this.cameras) c.toJson()],
+          if (internetKey.isNotEmpty) 'internetKey': internetKey,
         }),
       );
     } catch (e) {

@@ -794,9 +794,10 @@ class _EncryptedBadge extends StatelessWidget {
       if (code != null) codes[id] = code;
     }
     if (codes.isEmpty) return const SizedBox.shrink();
+    final internet = peers.any((id) => service.routeTo(id) == 'internet');
     final label = codes.length == 1
-        ? 'Encrypted · ${codes.values.single}'
-        : 'Encrypted';
+        ? 'Encrypted · ${codes.values.single}${internet ? ' · 🌐' : ''}'
+        : 'Encrypted${internet ? ' · 🌐' : ''}';
     return TextButton.icon(
       style: TextButton.styleFrom(
         visualDensity: VisualDensity.compact,
