@@ -201,6 +201,34 @@ class _PairingDialogState extends State<_PairingDialog> {
     );
   }
 
+  Future<void> _unpair() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unpair this device?'),
+        content: const Text(
+          'This device forgets the home key and stops Internet calls until '
+          'you pair it again. Your other intercoms keep the key and keep '
+          'working.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unpair'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await service.setHomeKey(null);
+    setState(() => _showCode = false);
+    _say('Unpaired. Pair again, or make a new home key.');
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -320,6 +348,13 @@ class _PairingDialogState extends State<_PairingDialog> {
                     'New home key',
                     'Locks out every other device (e.g. a lost phone).',
                     () => _newKey(replace: true),
+                  ),
+                  _action(
+                    Icons.link_off,
+                    'Unpair this device',
+                    'Forgets the home key here only, to pair again or be '
+                        'the first intercom. Your other devices keep working.',
+                    _unpair,
                   ),
                 ],
                 if (_message != null) ...[

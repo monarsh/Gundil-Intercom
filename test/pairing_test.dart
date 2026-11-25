@@ -64,6 +64,22 @@ void main() {
     );
   });
 
+  testWidgets('unpair: back to every pairing option', (tester) async {
+    final service = await _open(tester);
+    await tester.tap(find.text('This is the first intercom'));
+    await tester.pumpAndSettle();
+    expect(find.text('This is the first intercom'), findsNothing);
+    await tester.ensureVisible(find.text('Unpair this device'));
+    await tester.tap(find.text('Unpair this device'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Unpair'));
+    await tester.pumpAndSettle();
+    expect(service.homeKey, isNull);
+    expect(find.text('Not paired yet'), findsOneWidget);
+    expect(find.text('Ask an intercom on this Wi-Fi'), findsOneWidget);
+    expect(find.text('This is the first intercom'), findsOneWidget);
+  });
+
   testWidgets('asking with nobody on the Wi-Fi says so', (tester) async {
     final service = await _open(tester);
     await tester.tap(find.text('Ask an intercom on this Wi-Fi'));

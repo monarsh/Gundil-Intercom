@@ -182,7 +182,9 @@ With no intercom password, Internet calls use a **home key**, a random
 The gateway and the headless node get the code too: `home_key =` in
 `gateway.conf` or the router's LuCI page, `home-key =` in `node.conf`. A
 lost phone: **New home key** on one intercom locks out every device with the
-old key; then pair your own devices again. With a password set, the password
+old key; then pair your own devices again. **Unpair this device** forgets
+the key on that device only (to pair it again, or make it the first
+intercom); the others keep working. With a password set, the password
 is used and pairing isn't needed. On the LAN nothing changes: without a
 password anyone on your Wi-Fi can connect, as before.
 
