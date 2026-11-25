@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'internet/adpcm.dart';
+import 'link_transport.dart';
 import 'protocol.dart';
 import 'secure_channel.dart';
 
@@ -46,13 +48,21 @@ class LinkException implements Exception {
 /// one exception: a plaintext HELLO/OPEN from an older, unencrypted peer
 /// is delivered with [legacy] set, so the app can show "Needs update".
 class PeerConnection {
-  PeerConnection(this.socket, {required this.outgoing, required this.secret})
-    : remoteAddress = socket.remoteAddress,
-      remotePort = socket.remotePort,
-      localAddress = _localAddress(socket) {
-    try {
-      socket.setOption(SocketOption.tcpNoDelay, true);
-    } catch (_) {}
+  PeerConnection(
+    Socket socket, {
+    required bool outgoing,
+    required Uint8List secret,
+  }) : this.over(SocketTransport(socket), outgoing: outgoing, secret: secret);
+
+  /// Over any [LinkTransport] (a hole-punched UDP path, for instance).
+  PeerConnection.over(
+    this.socket, {
+    required this.outgoing,
+    required this.secret,
+  }) : remoteAddress = socket.remoteAddress,
+       remotePort = socket.remotePort,
+       localAddress = socket.localAddress {
+    socket.datagrams?.onReceive = _onDatagram;
     // Failures are also reported via [failure]; don't treat an unawaited
     // [ready] as an uncaught error.
     _ready.future.catchError((Object _) {});
@@ -89,15 +99,16 @@ class PeerConnection {
 
   static const Duration handshakeTimeout = Duration(seconds: 6);
 
-  static InternetAddress? _localAddress(Socket s) {
-    try {
-      return s.address;
-    } catch (_) {
-      return null;
-    }
-  }
+  final LinkTransport socket;
 
-  final Socket socket;
+  /// "internet" for a hole-punched UDP path; null for the LAN or a VPN.
+  String? get route => socket.route;
+
+  // Audio and video as datagrams (UDP paths only): no retransmission, so a
+  // lost packet is a short gap instead of a delay. Audio is IMA ADPCM.
+  DatagramCipher? _dgSealer, _dgOpener;
+  final AdpcmEncoder _adpcm = AdpcmEncoder();
+  static const int _adpcmFlag = 0x80;
 
   /// Whether we initiated this connection.
   final bool outgoing;
@@ -179,6 +190,27 @@ class PeerConnection {
     final sealer = _sealer;
     if (sealer == null) {
       _queue.add(frame);
+      return;
+    }
+    final dg = _dgSealer;
+    final channel = socket.datagrams;
+    if (dg != null &&
+        channel != null &&
+        (frame.type == MessageType.audio || frame.type == MessageType.video)) {
+      var type = frame.type.code;
+      var payload = frame.payload;
+      if (frame.type == MessageType.audio && payload.length >= 4) {
+        final pcm = Uint8List.fromList(
+          payload.sublist(0, payload.length & ~1),
+        ).buffer.asInt16List();
+        payload = _adpcm.encode(pcm);
+        type |= _adpcmFlag;
+      }
+      final (seq, sealed) = dg.seal(type, payload);
+      final blob = Uint8List(8 + sealed.length);
+      blob.buffer.asByteData().setUint64(0, seq);
+      blob.setRange(8, blob.length, sealed);
+      channel.send(blob);
       return;
     }
     _write(
@@ -274,12 +306,49 @@ class PeerConnection {
     }
     _sealer = FrameCipher(keys.sendKey);
     _opener = FrameCipher(keys.receiveKey);
+    if (socket.datagrams != null) {
+      final label = Uint8List.fromList('gundil/v1/datagram'.codeUnits);
+      _dgSealer = DatagramCipher(hkdf(keys.sendKey, Uint8List(0), label, 32));
+      _dgOpener = DatagramCipher(
+        hkdf(keys.receiveKey, Uint8List(0), label, 32),
+      );
+    }
     _securityCode = keys.securityCode;
     final queued = List.of(_queue);
     _queue.clear();
     queued.forEach(send);
     // [ready] completes when the other side's first frame (its HELLO)
     // decrypts, which proves both sides have the same keys.
+  }
+
+  void _onDatagram(Uint8List blob) {
+    final opener = _dgOpener;
+    if (_isClosed || opener == null || !_openedAny || blob.length < 8) return;
+    final (int code, Uint8List payload) inner;
+    try {
+      inner = opener.open(
+        blob.buffer.asByteData(blob.offsetInBytes).getUint64(0),
+        Uint8List.sublistView(blob, 8),
+      );
+    } catch (_) {
+      return; // Forged, damaged or replayed: drop it.
+    }
+    lastReceived = DateTime.now();
+    var code = inner.$1;
+    var payload = inner.$2;
+    if (code & _adpcmFlag != 0) {
+      code &= ~_adpcmFlag;
+      final pcm = adpcmDecode(payload);
+      payload = Uint8List.view(
+        pcm.buffer,
+        pcm.offsetInBytes,
+        pcm.lengthInBytes,
+      );
+    }
+    final type = MessageType.fromCode(code);
+    if (type == MessageType.audio || type == MessageType.video) {
+      _frames.add(Frame(type!, payload));
+    }
   }
 
   void _fail(LinkFailure failure) {
