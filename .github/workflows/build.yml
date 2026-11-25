@@ -53,6 +53,19 @@ jobs:
           TAG="${{ inputs.release || github.ref_name }}"
           case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
           gateway/packaging/build.sh "$V"
+          echo "V=$V" >> "$GITHUB_ENV"
+      - name: OpenWrt 25 packages (apk), and a test install
+        run: |
+          docker run --rm -v "$PWD/gateway:/w" -w /w alpine:3.23 sh -euc '
+            apk --version
+            sh packaging/openwrt/mkapk.sh "$0"
+            apk add --allow-untrusted --no-network "dist/gundil-gateway-$0-openwrt25-x86_64.apk"
+            gundil-gateway --version
+            apk info -L gundil-gateway
+            apk del gundil-gateway
+            test ! -e /usr/bin/gundil-gateway
+            chown -R '"$(id -u):$(id -g)"' dist
+          ' "$V"
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-gateway

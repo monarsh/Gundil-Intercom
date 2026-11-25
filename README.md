@@ -254,6 +254,18 @@ scp gundil-gateway-*-openwrt-aarch64.ipk gundil-gateway-*-openwrt-luci.ipk root@
 ssh root@192.168.1.1 'opkg install /tmp/gundil-gateway-*.ipk'
 ```
 
+**OpenWrt 25 and newer** use `apk` instead of `opkg` (`opkg: not found`).
+Take the `…-openwrt25-….apk` files instead; they aren't signed with
+OpenWrt's key, so add `--allow-untrusted`:
+
+```sh
+scp gundil-gateway-*-openwrt25-aarch64.apk gundil-gateway-*-openwrt25-luci.apk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'apk add --allow-untrusted /tmp/gundil-gateway-*.apk'
+```
+
+Upgrades the same way; your settings in `/etc/config/gundil` are kept.
+Remove with `apk del luci-app-gundil-gateway gundil-gateway`.
+
 **Raspberry Pi / Orange Pi / Linux PC:** `tar xzf gundil-gateway-*-linux-*.tar.gz`,
 `cd` into it, `sudo ./install.sh`, set `password` in `/etc/gundil-gateway.conf`,
 `sudo systemctl start gundil-gateway`. Log: `journalctl -u gundil-gateway -f`.

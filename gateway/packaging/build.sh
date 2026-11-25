@@ -6,7 +6,8 @@ set -e
 VERSION=${1:?version}
 cd "$(dirname "$0")/.."
 DIST=dist
-rm -rf "$DIST" && mkdir -p "$DIST"
+STAGE=build/apk # OpenWrt 25 (apk) file trees, packed by packaging/openwrt/mkapk.sh.
+rm -rf "$DIST" "$STAGE" && mkdir -p "$DIST" "$STAGE"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -52,6 +53,7 @@ for t in aarch64:linux-arm64 arm:linux-armv7 mipsel:linux-mipsle mips:linux-mips
 	Installed-Size: $((size * 1024))
 	Description: Lets the Gundil Intercom apps reach the cameras on this LAN over the internet (STUN + UDP hole punching, public Nostr relays). Build for $name CPUs.
 	C
+	mkdir -p "$STAGE/$name" && cp -a "$p/data/." "$STAGE/$name/"
 	echo /etc/config/gundil > "$p/control/conffiles"
 	printf '#!/bin/sh\n[ -n "$IPKG_INSTROOT" ] || /etc/init.d/gundil-gateway enable\nexit 0\n' > "$p/control/postinst"
 	printf '#!/bin/sh\n[ -n "$IPKG_INSTROOT" ] || { /etc/init.d/gundil-gateway stop; /etc/init.d/gundil-gateway disable; }\nexit 0\n' > "$p/control/prerm"
@@ -71,6 +73,7 @@ install -m 644 packaging/luci/gundil-gateway.js "$p/data/www/luci-static/resourc
 install -m 644 packaging/luci/menu.json "$p/data/usr/share/luci/menu.d/luci-app-gundil-gateway.json"
 install -m 644 packaging/luci/acl.json "$p/data/usr/share/rpcd/acl.d/luci-app-gundil-gateway.json"
 install -m 755 packaging/luci/gundil-gateway-luci "$p/data/usr/libexec/gundil-gateway-luci"
+mkdir -p "$STAGE/luci" && cp -a "$p/data/." "$STAGE/luci/"
 size=$(du -sk "$p/data" | cut -f1)
 cat > "$p/control/control" <<-C
 Package: luci-app-gundil-gateway
