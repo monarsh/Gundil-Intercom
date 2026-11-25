@@ -381,8 +381,11 @@ jobs:
           # Create or move the tag here: the release step below then only
           # finds it (asking it to move the release's commit was refused).
           git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
-      - name: Remove files of an earlier build that this one doesn't have
-        # e.g. after files were renamed; the upload below replaces the rest.
+      - name: Rebuilding an existing release - replace its files
+        # GitHub refuses edits of an existing release from here ("Resource
+        # not accessible by integration"), so its files are replaced
+        # directly; the notes are updated if allowed.
+        id: rebuild
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -390,16 +393,25 @@ jobs:
           TAG: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release view "$TAG" --json assets -q '.assets[].name' |
-              while read -r name; do
-                if [ ! -f "dist/$name" ]; then
-                  echo "Removing $name"
-                  gh release delete-asset "$TAG" "$name" -y
-                fi
-              done
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          # Files of an earlier build that this one doesn't have (renamed).
+          gh release view "$TAG" --json assets -q '.assets[].name' |
+            while read -r name; do
+              if [ ! -f "dist/$name" ]; then
+                echo "Removing $name"
+                gh release delete-asset "$TAG" "$name" -y
+              fi
+            done
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --notes-file release-notes.md ||
+            echo "::warning::Could not update the release notes (files are updated)"
       - uses: softprops/action-gh-release@v2
+        # A new release (a new tag, or the first run for a version).
+        if: steps.rebuild.outputs.exists != 'true'
         with:
           tag_name: ${{ inputs.release || github.ref_name }}
           name: Gundil Intercom ${{ inputs.release || github.ref_name }}
