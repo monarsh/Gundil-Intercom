@@ -8,7 +8,7 @@ VERSION=${1:?version}
 cd "$(dirname "$0")/../.."
 STAGE=build/apk
 DIST=dist
-apk mkpkg --help >/dev/null 2>&1 || {
+apk --version 2>/dev/null | grep -q '^apk-tools 3' || {
 	echo "mkapk.sh: needs apk-tools 3 (apk mkpkg); this apk is: $(apk --version 2>&1)" >&2
 	exit 1
 }

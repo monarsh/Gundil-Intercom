@@ -378,9 +378,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ inputs.release }}"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
-          fi
+          # Create or move the tag here: the release step below then only
+          # finds it (asking it to move the release's commit was refused).
+          git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
       - name: Remove files of an earlier build that this one doesn't have
         # e.g. after files were renamed; the upload below replaces the rest.
         if: github.event_name == 'workflow_dispatch'
@@ -402,7 +402,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release || github.ref_name }}
-          target_commitish: ${{ github.sha }}
           name: Gundil Intercom ${{ inputs.release || github.ref_name }}
           body_path: release-notes.md
           files: dist/*
