@@ -156,14 +156,41 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
 ## Internet calls (outside home, no VPN)
 
 Turn on **⚙ Settings → Internet calls (STUN + UDP hole punching)** on every
-intercom (same intercom password, at least 10 characters). Then the
-intercoms find each other from anywhere, also on mobile data:
+intercom. Then the intercoms find each other from anywhere, also on mobile
+data. They need a shared secret, either:
+
+- **the intercom password** (the same on every device, at least 10
+  characters), or
+- **no password and a home key**: pair each device once, nothing to type.
+
+### Pairing (Internet calls without a password)
+
+With no intercom password, Internet calls use a **home key**, a random
+256-bit key. **⚙ Settings → Internet calls → Pairing**:
+
+1. On the first intercom: **This is the first intercom** makes the key.
+2. On each other device, once:
+   - **Ask an intercom on this Wi-Fi**: the paired intercom shows *Allow
+     Phone to use Internet calls?* with a code. Check both show the same
+     code, then tap **Allow**. The key goes over the encrypted LAN link, and
+     only after Allow.
+   - or **Scan pairing QR** (phones) of the code shown by a paired intercom
+     under **Show pairing code**,
+   - or **Paste pairing code** (`GUNDIL-PAIR-…`, e.g. copied to a PC).
+3. Paired devices show the same *home key 7F3A-91C2*.
+
+The gateway and the headless node get the code too: `home_key =` in
+`gateway.conf` or the router's LuCI page, `home-key =` in `node.conf`. A
+lost phone: **New home key** on one intercom locks out every device with the
+old key; then pair your own devices again. With a password set, the password
+is used and pairing isn't needed. On the LAN nothing changes: without a
+password anyone on your Wi-Fi can connect, as before.
 
 - **Finding each other:** each intercom announces itself on 5 public
   [Nostr](https://nostr.com) relays at once (`relay.damus.io`, `nos.lol`,
   `relay.primal.net`, `nostr.mom`, `relay.nostr.band`). The announcements
-  are encrypted with a key from the password (scrypt), so the relays only
-  see random keys, a hash and ciphertext.
+  are encrypted with a key from the password (scrypt) or the home key, so
+  the relays only see random keys, a hash and ciphertext.
 - **Connecting:** when you call, the two intercoms ask public STUN servers
   (Google, Cloudflare) for their public address, exchange them through the
   relays (encrypted), and punch a hole through both NATs with UDP. The call
@@ -177,7 +204,8 @@ intercoms find each other from anywhere, also on mobile data:
 - **Battery:** while idle only the relay connections stay open; the direct
   link is made when a call starts and closed a minute after it ends.
 - Peers seen only over the internet show **🌐**, and so do calls over it.
-- The headless node: `internet = true` in its config.
+- The headless node: `internet = true` in its config (plus `home-key =`
+  without a password).
 
 ### Cameras from outside (gateway)
 
@@ -202,7 +230,8 @@ networks), never to the internet or to itself.
 scp gundil-gateway-*-openwrt-aarch64.ipk root@192.168.1.1:/tmp/
 ssh root@192.168.1.1
 opkg install /tmp/gundil-gateway-*-openwrt-aarch64.ipk
-uci set gundil.main.password='your intercom password'
+uci set gundil.main.password='your intercom password'   # or, without a password:
+# uci set gundil.main.home_key='GUNDIL-PAIR-...'      (the app's pairing code)
 uci set gundil.main.share_cameras=1
 uci commit gundil
 /etc/init.d/gundil-gateway start
@@ -212,8 +241,9 @@ logread -e gundil
 
 **Web page (LuCI):** also install `gundil-gateway-*-openwrt-luci.ipk` (the
 same file for every router) and open **Services → Gundil gateway** in the
-router's web interface. Set the intercom password, tick **Share home
-cameras**, press **Save & Apply**. The page shows whether the gateway runs,
+router's web interface. Set the intercom password, or paste the **Home
+key** (pairing code) if your apps use none, tick **Share home cameras**,
+press **Save & Apply**. The page shows whether the gateway runs,
 and has **Check network**, **Show log** and **Restart** buttons, so no SSH
 is needed after installing:
 

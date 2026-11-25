@@ -1,4 +1,10 @@
 {
+  "homeKeyHex": "030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc",
+  "homePairing": "GUNDIL-PAIR-AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dyrX4s",
+  "homeFingerprint": "9952-3B55",
+  "homeLinkSecret": "ce517bdd637731554fac748a3babf9c7b99a7941bf939ad89a3123a1044a6eaf",
+  "homeTopic": "1323e16dff5385dfc7cc20bfbad94a16",
+  "homeContentKey": "d94dbd4017e5a0b864634013c88e9effa8acb14a0fc37b9640de639ba288e69b",
   "password": "correct horse battery",
   "networkSecret": "5583228e4c6eccf752a75fd5a47c7c03097dc3d9367c5a4cc12ed202b9fb06cc",
   "noPasswordSecret": "a911473b17303528d5917a6bd0bfc731dfe507f7978e432a86bfbf6a36a94b75",

@@ -27,13 +27,13 @@ chown root:gundil-gateway "$CONF"
 chmod 640 "$CONF"
 install -m 644 gundil-gateway.service /etc/systemd/system/gundil-gateway.service
 systemctl daemon-reload
-if grep -Eq '^password *= *.{10,}' "$CONF"; then
+if grep -Eq '^(password *= *.{10,}|home_key *= *[^ ]+)' "$CONF"; then
 	systemctl enable --now gundil-gateway
 	systemctl restart gundil-gateway
 	echo "Running. Check it: gundil-gateway --check --config=$CONF"
 	echo "Log: journalctl -u gundil-gateway -f"
 else
 	systemctl enable gundil-gateway
-	echo "Installed. Now set the intercom password in $CONF, then:"
+	echo "Installed. Now set the intercom password (or home_key) in $CONF, then:"
 	echo "  sudo systemctl start gundil-gateway"
 fi

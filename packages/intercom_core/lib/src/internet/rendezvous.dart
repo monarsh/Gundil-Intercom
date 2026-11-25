@@ -40,7 +40,12 @@ class RendezvousKeys {
           Uint8List.fromList(utf8.encode('gundil-intercom/v1/internet')),
         ),
       );
-    final key = scrypt.process(Uint8List.fromList(utf8.encode(password)));
+    return fromRoot(scrypt.process(Uint8List.fromList(utf8.encode(password))));
+  }
+
+  /// From a 32-byte root key: the password's scrypt hash, or a home key's
+  /// [HomeKey.rendezvousRoot].
+  static RendezvousKeys fromRoot(Uint8List key) {
     final topic = hkdf(
       key,
       Uint8List(0),

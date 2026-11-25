@@ -57,8 +57,12 @@ func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {
 		return nil, err
 	}
 	g := &gateway{cfg: cfg, selfID: st.DeviceID, priv: priv,
-		keys: deriveRendezvous(cfg.Password, scryptN), secret: networkSecret(cfg.Password),
 		mux: mux, share: cfg.ShareCameras, anyHost: cfg.AnyHost}
+	if cfg.Password != "" {
+		g.keys, g.secret = deriveRendezvous(cfg.Password, scryptN), networkSecret(cfg.Password)
+	} else {
+		g.keys, g.secret = homeRendezvous(cfg.HomeKey), homeLinkSecret(cfg.HomeKey)
+	}
 	since := time.Now().Add(-15 * time.Minute).Unix()
 	g.nostr = newNostrClient(cfg.Relays, map[string]any{
 		"kinds": []int{presenceKind, signalKind},
@@ -425,6 +429,11 @@ func (g *gateway) check() {
 		"unknown":   "unknown (no STUN server answered)",
 	}[nat]
 	nets, _ := localAddrs()
+	if g.cfg.Password == "" {
+		fmt.Printf("Key:     home key %s (compare with the app)\n", homeFingerprint(g.cfg.HomeKey))
+	} else {
+		fmt.Printf("Key:     the intercom password\n")
+	}
 	fmt.Printf("Relays:  %d of %d connected\n", g.nostr.connected(), len(g.cfg.Relays))
 	fmt.Printf("NAT:     %s\n", natText)
 	fmt.Printf("Public:  %v\n", pub)

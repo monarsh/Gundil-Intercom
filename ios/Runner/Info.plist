@@ -27,7 +27,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Gundil Intercom uses the microphone so the other intercom can hear you during a call.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Gundil Intercom uses the camera only when you turn on video during a call.</string>
+	<string>Gundil Intercom uses the camera only when you turn on video during a call, or to scan a pairing QR code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Gundil Intercom connects directly to the other intercoms on your network.</string>
 	<key>UIBackgroundModes</key>

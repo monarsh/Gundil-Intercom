@@ -4,15 +4,18 @@
 conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
 	. /lib/functions.sh
 	config_load gundil
-	local password name share relays
+	local password home_key name share relays
 	config_get password main password ''
+	config_get home_key main home_key ''
 	config_get name main name 'Home router'
 	config_get_bool share main share_cameras 0
 	config_get relays main relays ''
-	[ ${#password} -ge 10 ] || return 1
+	[ -n "$password" ] || [ -n "$home_key" ] || return 1
+	[ -z "$password" ] || [ ${#password} -ge 10 ] || return 1
 	umask 077
 	{
-		echo "password = $password"
+		[ -n "$password" ] && echo "password = $password"
+		[ -n "$home_key" ] && echo "home_key = $home_key"
 		echo "name = $name"
 		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
 		[ -n "$relays" ] && echo "relays = $relays"
@@ -27,12 +30,17 @@ status)
 		jsonfilter -e '@["gundil-gateway"].instances.*.pid' 2>/dev/null | head -n1)
 	echo "pid=$pid"
 	pw=$(uci -q get gundil.main.password)
-	[ ${#pw} -ge 10 ] && echo password=1 || echo password=0
+	hk=$(uci -q get gundil.main.home_key)
+	if [ -n "$pw" ]; then
+		[ ${#pw} -ge 10 ] && echo password=1 || echo password=0
+	else
+		[ -n "$hk" ] && echo password=1 || echo password=0
+	fi
 	;;
 check)
 	f=/tmp/gundil-gateway-check.conf
 	if ! conf_from_uci "$f"; then
-		echo "Set the intercom password (10+ characters) and press Save & Apply first."
+		echo "Set the intercom password (10+ characters) or the home key, and press Save & Apply first."
 		exit 1
 	fi
 	/usr/bin/gundil-gateway --check --config="$f" 2>&1

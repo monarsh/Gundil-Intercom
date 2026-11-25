@@ -56,7 +56,7 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('phone ↔ Go gateway: hidden from calls, camera through it', () async {
+  Future<void> run({HomeKey? key}) async {
     if (bin == null) {
       markTestSkipped('Go is not installed');
       return;
@@ -69,7 +69,7 @@ void main() {
     });
     final conf = File('${tmp.path}/gateway.conf')
       ..writeAsStringSync('''
-password = correct horse battery
+${key == null ? 'password = correct horse battery' : 'home_key = ${key.pairingText}'}
 name = Home router
 share_cameras = true
 relays = ${relay.url}
@@ -89,7 +89,8 @@ test_scrypt_n = 1024
       audio: FakeAudioEngine(),
       preferredPort: 0,
       enableDiscovery: false,
-      password: 'correct horse battery',
+      password: key == null ? 'correct horse battery' : '',
+      homeKey: key?.hex ?? '',
       internetMode: true,
       internetRelays: [relay.url],
       stunServers: [('127.0.0.1', stun.port), ('127.0.0.1', stun.port)],
@@ -141,5 +142,17 @@ test_scrypt_n = 1024
       print('--- gateway log ---\n$gwLog');
       rethrow;
     }
-  }, timeout: const Timeout(Duration(seconds: 120)));
+  }
+
+  test(
+    'phone ↔ Go gateway: hidden from calls, camera through it',
+    run,
+    timeout: const Timeout(Duration(seconds: 120)),
+  );
+
+  test(
+    'phone ↔ Go gateway with the home key (no password)',
+    () => run(key: HomeKey.generate()),
+    timeout: const Timeout(Duration(seconds: 120)),
+  );
 }

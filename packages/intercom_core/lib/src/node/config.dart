@@ -38,7 +38,10 @@ class NodeConfig {
     'internet':
         'Internet calls (STUN + UDP hole punching) through public Nostr '
         'relays: true/false (default false; needs a password of 10+ '
-        'characters)',
+        'characters, or home-key)',
+    'home-key':
+        'For Internet calls without a password: the pairing code from a '
+        'paired app (Settings > Internet calls > Pairing), GUNDIL-PAIR-...',
     'share-cameras':
         'Let intercoms outside reach the cameras on this LAN through this '
         'node (with internet = true): true/false (default false)',

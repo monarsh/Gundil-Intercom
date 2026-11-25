@@ -49,6 +49,8 @@ Future<void> main() async {
     internetMode: settings.internetMode,
     internetKey: settings.internetKey,
     onInternetKeyChanged: (k) => settings.internetKey = k,
+    homeKey: settings.homeKey,
+    onHomeKeyChanged: (k) => settings.homeKey = k,
     shareCameras: settings.shareCameras,
   );
   await service.start();
@@ -169,7 +171,7 @@ void _mirrorStatusOutsideApp(IntercomService service) {
       switch (e.kind) {
         case IntercomEventKind.connected:
           WindowBridge.notify('Gundil Intercom', '${e.message} — line open');
-        case IntercomEventKind.ringing:
+        case IntercomEventKind.ringing || IntercomEventKind.pairRequest:
           WindowBridge.notify('Gundil Intercom', e.message);
         case IntercomEventKind.disconnected:
         case IntercomEventKind.info:

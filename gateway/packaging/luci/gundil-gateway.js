@@ -30,7 +30,7 @@ function statusText(s) {
 	if (s.pid)
 		return _('Running (pid %s)').format(s.pid);
 	if (s.password !== '1')
-		return _('Not running: set the intercom password below (10+ characters), then Save & Apply.');
+		return _('Not running: set the intercom password (10+ characters) or the home key below, then Save & Apply.');
 	if (s.enabled !== '1')
 		return _('Stopped (not started at boot). Press Restart to start it.');
 	return _('Not running. See the log below.');
@@ -45,7 +45,7 @@ return view.extend({
 		const m = new form.Map('gundil', _('Gundil gateway'),
 			_('Lets the Gundil Intercom apps reach the cameras on this LAN from the internet, ' +
 			  'with STUN and UDP hole punching through public Nostr relays. No port forwarding needed. ' +
-			  'Everything is end-to-end encrypted with the intercom password.'));
+			  'Everything is end-to-end encrypted with the intercom password or the home key.'));
 
 		const s = m.section(form.NamedSection, 'main', 'gateway', _('Settings'));
 		s.addremove = false;
@@ -60,11 +60,26 @@ return view.extend({
 		o.cfgvalue = function() { return status.version || '?'; };
 
 		o = s.option(form.Value, 'password', _('Intercom password'),
-			_('The same password as in the apps, at least 10 characters.'));
+			_('If your apps use an intercom password: the same one, at least 10 characters. Otherwise leave it empty and use the home key.'));
 		o.password = true;
-		o.rmempty = false;
 		o.validate = function(id, value) {
-			return (value && value.length >= 10) ? true : _('At least 10 characters');
+			if (value && value.length < 10)
+				return _('At least 10 characters');
+			return true;
+		};
+
+		o = s.option(form.Value, 'home_key', _('Home key'),
+			_('If your apps use no password: in a paired app open Settings → Internet calls → Pairing → Copy pairing code, and paste it here (GUNDIL-PAIR-…).'));
+		o.password = true;
+		o.placeholder = 'GUNDIL-PAIR-…';
+		o.validate = function(id, value) {
+			const v = (value || '').replace(/\s/g, '');
+			const pw = this.section.formvalue(id, 'password');
+			if (!v)
+				return pw ? true : _('Set the intercom password or the home key');
+			if (/^[0-9a-fA-F]{64}$/.test(v) || /^GUNDIL-PAIR-[A-Za-z0-9_-]{46,47}=?$/i.test(v))
+				return true;
+			return _('Not a pairing code (it starts with GUNDIL-PAIR-)');
 		};
 
 		o = s.option(form.Value, 'name', _('Name'), _('The name the apps show for this gateway.'));

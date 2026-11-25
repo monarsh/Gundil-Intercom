@@ -51,6 +51,16 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  HomeKey? homeKey;
+  final homeKeyText = cfg.str('home-key') ?? '';
+  if (homeKeyText.isNotEmpty) {
+    try {
+      homeKey = HomeKey.parse(homeKeyText);
+    } on FormatException catch (e) {
+      stderr.writeln('home-key: ${e.message}');
+      exit(1);
+    }
+  }
   final core = IntercomCore(
     selfId: state.deviceId,
     name: name,
@@ -73,6 +83,7 @@ Future<void> main(List<String> args) async {
     onCamerasChanged: (list) => state.save(cameras: list),
     internetMode: cfg.flag('internet', fallback: false),
     shareCameras: cfg.flag('share-cameras', fallback: false),
+    homeKey: homeKey?.hex ?? '',
     internetKey: state.internetKey,
     onInternetKeyChanged: (k) {
       state.internetKey = k;
@@ -124,6 +135,17 @@ Future<void> main(List<String> args) async {
           : 'WARNING: Internet calls not running: ${core.internetProblem}',
     );
   }
+
+  // A node has no screen to Allow a pairing request: say no at once.
+  core.events.listen((e) {
+    if (e.kind == IntercomEventKind.pairRequest && e.peerId != null) {
+      log(
+        '${e.message}: declined (pair from the app, or copy home-key '
+        'from this node.conf)',
+      );
+      core.answerPairRequest(e.peerId!, false);
+    }
+  });
 
   final target = cfg.str('target') ?? 'everyone';
   final node = _Node(core, target);

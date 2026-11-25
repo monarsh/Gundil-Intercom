@@ -8,19 +8,25 @@ USE_PROCD=1
 
 start_service() {
 	config_load gundil
-	local password name share relays
+	local password home_key name share relays
 	config_get password main password ''
+	config_get home_key main home_key ''
 	config_get name main name 'Home router'
 	config_get_bool share main share_cameras 0
 	config_get relays main relays ''
-	if [ ${#password} -lt 10 ]; then
-		logger -t gundil-gateway "not started: set the intercom password (10+ characters): uci set gundil.main.password='...'; uci commit gundil"
+	if [ -z "$password" ] && [ -z "$home_key" ]; then
+		logger -t gundil-gateway "not started: set the intercom password (10+ characters) or the home key (pairing code from a paired app), in LuCI (Services > Gundil gateway) or: uci set gundil.main.home_key='GUNDIL-PAIR-...'; uci commit gundil"
+		return 1
+	fi
+	if [ -n "$password" ] && [ ${#password} -lt 10 ]; then
+		logger -t gundil-gateway "not started: the intercom password must have 10+ characters"
 		return 1
 	fi
 	mkdir -p /var/etc
 	umask 077
 	{
-		echo "password = $password"
+		[ -n "$password" ] && echo "password = $password"
+		[ -n "$home_key" ] && echo "home_key = $home_key"
 		echo "name = $name"
 		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
 		[ -n "$relays" ] && echo "relays = $relays"

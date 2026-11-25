@@ -12,6 +12,7 @@ import 'camera/tapo_control.dart';
 import 'contacts_backup.dart';
 import 'debug_log.dart';
 import 'discovery.dart';
+import 'internet/home_key.dart';
 import 'internet/internet_service.dart';
 import 'internet/nostr.dart';
 import 'internet/rendezvous.dart';
@@ -53,6 +54,10 @@ enum IntercomEventKind {
 
   /// [IntercomEvent.peerId] is ringing us (auto-answer off).
   ringing,
+
+  /// [IntercomEvent.peerId] asks for the home key: show Allow / Deny
+  /// ([IntercomCore.pairRequests], [IntercomCore.answerPairRequest]).
+  pairRequest,
 }
 
 /// Walkie-talkie style intercom.
@@ -124,6 +129,8 @@ class IntercomCore {
     bool internetMode = false,
     String internetKey = '',
     this.onInternetKeyChanged,
+    String homeKey = '',
+    this.onHomeKeyChanged,
     this.internetRelays = defaultRelays,
     this.stunServers = defaultStunServers,
     bool shareCameras = false,
@@ -131,6 +138,7 @@ class IntercomCore {
        _shareCameras = shareCameras,
        _internetMode = internetMode,
        _internetKey = internetKey,
+       _homeKey = HomeKey.tryHex(homeKey),
        _password = password,
        _speakerVolume = speakerVolume.clamp(0.0, maxVolume),
        _micVolume = micVolume.clamp(0.0, maxVolume),
@@ -288,6 +296,22 @@ class IntercomCore {
   InternetService? _internet;
   String? _internetProblem;
 
+  HomeKey? _homeKey;
+
+  /// Called with the new home key (hex, '' = none) to persist it.
+  final void Function(String hex)? onHomeKeyChanged;
+
+  /// The network secret of internet links (the password's, or the home
+  /// key's when there is no password).
+  Uint8List _netSecret = networkSecret('');
+
+  /// The home key (null: not paired). Internet calls use it when there is
+  /// no intercom password.
+  HomeKey? get homeKey => _homeKey;
+
+  /// Internet calls use the intercom password (else the home key).
+  bool get internetUsesPassword => _password.isNotEmpty;
+
   /// Tests: weaker password hardening (scrypt N), for speed.
   static int internetScryptN = 1 << 15;
 
@@ -309,13 +333,12 @@ class IntercomCore {
   NatType get internetNat => _internet?.natType ?? NatType.unknown;
 
   /// Turns Internet calls on or off. Refused (ArgumentError) on with a
-  /// password shorter than [internetMinPassword].
+  /// password shorter than [internetMinPassword], or with no password and
+  /// no [homeKey].
   Future<void> setInternetMode(bool on) async {
-    if (on && _password.length < internetMinPassword) {
-      throw ArgumentError(
-        'Internet calls need an intercom password of at least '
-        '$internetMinPassword characters (Settings)',
-      );
+    if (on) {
+      final problem = _internetBlocker();
+      if (problem != null) throw ArgumentError(problem);
     }
     if (on == _internetMode) return;
     _internetMode = on;
@@ -330,12 +353,26 @@ class IntercomCore {
   /// "Check network": relays, NAT type, public address.
   Future<NetworkCheck?> checkInternet() async => _internet?.check();
 
+  /// Why Internet calls can't start with the current settings.
+  String? _internetBlocker() {
+    if (_password.isNotEmpty && _password.length < internetMinPassword) {
+      return 'Internet calls need an intercom password of at least '
+          '$internetMinPassword characters, or no password and a paired '
+          'home key';
+    }
+    if (_password.isEmpty && _homeKey == null) {
+      return 'Pair this intercom first: ask a paired intercom on this '
+          'Wi-Fi, scan or paste its pairing code, or make a new home key '
+          'if this is the first one';
+    }
+    return null;
+  }
+
   Future<void> _startInternet() async {
     if (_internet != null || _shutDown) return;
-    if (_password.length < internetMinPassword) {
-      _internetProblem =
-          'needs an intercom password of at least $internetMinPassword '
-          'characters';
+    final blocker = _internetBlocker();
+    if (blocker != null) {
+      _internetProblem = blocker;
       changed();
       return;
     }
@@ -347,10 +384,28 @@ class IntercomCore {
       onInternetKeyChanged?.call(key);
     }
     final password = _password;
-    final keys = internetScryptN == 1 << 15
-        ? await RendezvousKeys.deriveAsync(password)
-        : RendezvousKeys.derive(password, n: internetScryptN);
-    if (!_internetMode || _shutDown || password != _password) return;
+    final home = _homeKey;
+    final RendezvousKeys keys;
+    if (password.isEmpty) {
+      keys = RendezvousKeys.fromRoot(home!.rendezvousRoot);
+      _netSecret = home.linkSecret;
+    } else {
+      keys = internetScryptN == 1 << 15
+          ? await RendezvousKeys.deriveAsync(password)
+          : RendezvousKeys.derive(password, n: internetScryptN);
+      _netSecret = _secret;
+    }
+    if (!_internetMode ||
+        _shutDown ||
+        password != _password ||
+        home != _homeKey) {
+      return;
+    }
+    log(
+      password.isEmpty
+          ? 'Internet calls: using the home key ${home!.fingerprint}'
+          : 'Internet calls: using the intercom password',
+    );
     final svc = InternetService(
       selfId: selfId,
       keys: keys,
@@ -372,7 +427,7 @@ class IntercomCore {
           return;
         }
         _adopt(
-          PeerConnection.over(link, outgoing: false, secret: _secret),
+          PeerConnection.over(link, outgoing: false, secret: _netSecret),
           incoming: true,
         );
       },
@@ -770,12 +825,168 @@ class IntercomCore {
       p.wrongPassword = false;
     }
     // Another password is another meeting place on the relays.
-    if (_internetMode) {
-      await _stopInternet();
-      await _startInternet();
-    }
+    if (_internetMode) await _restartInternet();
     changed();
     _retrySaved();
+  }
+
+  Future<void> _restartInternet() async {
+    await _stopInternet();
+    _internetProblem = null;
+    await _startInternet();
+  }
+
+  // ------------------------------------------------------------- home key
+
+  /// Sets (or with null, forgets) the home key and restarts Internet calls
+  /// with it if they use it.
+  Future<void> setHomeKey(HomeKey? key) async {
+    if (key == _homeKey) return;
+    _homeKey = key;
+    onHomeKeyChanged?.call(key?.hex ?? '');
+    log(key == null ? 'Home key removed' : 'Home key set: ${key.fingerprint}');
+    if (_internetMode && _password.isEmpty) await _restartInternet();
+    changed();
+  }
+
+  /// Makes a new home key: for the first intercom, or to lock out a lost
+  /// device (every other device must then be paired again).
+  Future<HomeKey> newHomeKey() async {
+    final key = HomeKey.generate();
+    await setHomeKey(key);
+    return key;
+  }
+
+  final Map<String, PairRequest> _pairRequests = {};
+  final Map<String, Completer<HomeKey>> _pairWaits = {};
+
+  /// Intercoms that [requestHomeKey] can ask now (connected on the LAN).
+  List<Peer> get pairablePeers => [
+    for (final p in onlinePeers)
+      if (!p.isGateway)
+        if (_links[p.id] case final l? when l.secure && l.route != 'internet')
+          p,
+  ];
+
+  /// Pending requests for the home key from intercoms on the LAN.
+  List<PairRequest> get pairRequests => _pairRequests.values.toList();
+
+  /// How long a request waits for Allow / Deny.
+  static Duration pairTimeout = const Duration(minutes: 2);
+
+  /// Asks [peerId] (connected on the LAN) for its home key. Its user sees
+  /// Allow / Deny with the security code ([securityCode]). Completes with
+  /// the key, already set, or throws [StateError] with the reason.
+  Future<HomeKey> requestHomeKey(String peerId) {
+    final link = _links[peerId];
+    if (link == null || !link.secure) {
+      return Future.error(
+        StateError('${displayName(peerId)} is not connected'),
+      );
+    }
+    if (link.route == 'internet') {
+      return Future.error(
+        StateError('Pairing works only on the same Wi-Fi or LAN'),
+      );
+    }
+    _pairWaits.remove(peerId)?.completeError(StateError('Asked again'));
+    final wait = Completer<HomeKey>();
+    _pairWaits[peerId] = wait;
+    link.send(Frame.json(MessageType.pairRequest, const {}));
+    log('Asked ${displayName(peerId)} for the home key');
+    return wait.future.timeout(
+      pairTimeout + const Duration(seconds: 10),
+      onTimeout: () {
+        if (identical(_pairWaits[peerId], wait)) _pairWaits.remove(peerId);
+        throw StateError('${displayName(peerId)} did not answer');
+      },
+    );
+  }
+
+  /// Allows or denies [peerId]'s request for the home key.
+  void answerPairRequest(String peerId, bool allow) {
+    final r = _pairRequests.remove(peerId);
+    if (r == null) return;
+    r.timer?.cancel();
+    final link = _links[peerId];
+    final key = _homeKey;
+    if (link == null || !link.secure || link.route == 'internet') {
+      changed();
+      return;
+    }
+    if (allow && key != null) {
+      link.send(
+        Frame.json(MessageType.pairReply, {'ok': true, 'key': key.hex}),
+      );
+      log('Sent the home key to ${displayName(peerId)}');
+      _emit('${displayName(peerId)} is paired for Internet calls');
+    } else {
+      link.send(
+        Frame.json(MessageType.pairReply, {
+          'ok': false,
+          'reason': allow ? 'this intercom has no home key' : 'declined',
+        }),
+      );
+      log('Declined the home key to ${displayName(peerId)}');
+    }
+    changed();
+  }
+
+  void _onPairRequest(PeerConnection c, String id) {
+    void refuse(String reason) => c.send(
+      Frame.json(MessageType.pairReply, {'ok': false, 'reason': reason}),
+    );
+    if (c.route == 'internet') return; // Can't happen without the key.
+    if (_homeKey == null) {
+      refuse(
+        '${_name.isEmpty ? 'that intercom' : _name} has no home key '
+        'yet',
+      );
+      return;
+    }
+    if (_pairRequests.containsKey(id)) return;
+    final r = PairRequest(
+      peerId: id,
+      name: displayName(id),
+      securityCode: c.securityCode ?? '',
+      at: DateTime.now(),
+    );
+    r.timer = Timer(pairTimeout, () {
+      if (_pairRequests.remove(id) != null) {
+        refuse('nobody allowed it in time');
+        changed();
+      }
+    });
+    _pairRequests[id] = r;
+    log('${r.name} asks for the home key');
+    _emit(
+      '${r.name} asks to use Internet calls',
+      kind: IntercomEventKind.pairRequest,
+      peerId: id,
+    );
+    changed();
+  }
+
+  void _onPairReply(String id, Map<String, Object?> m) {
+    final wait = _pairWaits.remove(id);
+    if (wait == null) return; // We didn't ask: ignore.
+    if (m['ok'] == true) {
+      final key = HomeKey.tryHex('${m['key']}');
+      if (key == null) {
+        wait.completeError(StateError('The answer was damaged'));
+        return;
+      }
+      unawaited(
+        setHomeKey(key).then(
+          (_) => wait.complete(key),
+          onError: (Object e) => wait.complete(key),
+        ),
+      );
+    } else {
+      wait.completeError(
+        StateError('${displayName(id)}: ${m['reason'] ?? 'declined'}'),
+      );
+    }
   }
 
   /// PBKDF2 takes a moment: run it off the UI isolate.
@@ -1190,7 +1401,7 @@ class IntercomCore {
       } catch (_) {}
     }
     final link = await internet.connect(p.id, name: displayName(p.id));
-    return PeerConnection.over(link, outgoing: true, secret: _secret);
+    return PeerConnection.over(link, outgoing: true, secret: _netSecret);
   }
 
   /// IPv4 addresses of [host] (an IP address or a name, e.g. a Tailscale
@@ -1276,6 +1487,14 @@ class IntercomCore {
       await c.close();
     }
     await _server?.close();
+    for (final r in _pairRequests.values) {
+      r.timer?.cancel();
+    }
+    _pairRequests.clear();
+    for (final w in _pairWaits.values) {
+      w.completeError(StateError('Closed'));
+    }
+    _pairWaits.clear();
     await _events.close();
     onShutdown();
   }
@@ -2638,6 +2857,10 @@ class IntercomCore {
         _tunnels.onData(c, f.payload);
       case MessageType.tunnelClose:
         _tunnels.onClose(c, f.payload);
+      case MessageType.pairRequest:
+        _onPairRequest(c, id);
+      case MessageType.pairReply:
+        _onPairReply(id, f.json);
       case MessageType.key || MessageType.sealed:
         break; // Handled by PeerConnection.
     }
@@ -3579,4 +3802,21 @@ class _Refused implements Exception {
 
   @override
   String toString() => '$error';
+}
+
+/// An intercom on the LAN asking for the home key.
+class PairRequest {
+  PairRequest({
+    required this.peerId,
+    required this.name,
+    required this.securityCode,
+    required this.at,
+  });
+  final String peerId, name;
+
+  /// The link's security code: the same on both devices unless someone is
+  /// in between.
+  final String securityCode;
+  final DateTime at;
+  Timer? timer;
 }

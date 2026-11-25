@@ -57,8 +57,12 @@ func serve(cfgPath string, check bool) {
 		g.check()
 		return
 	}
-	log.Printf("gundil-gateway %s \"%s\" (UDP port %d, %d relays, sharing cameras: %v)",
-		version, cfg.Name, g.mux.port(), len(cfg.Relays), cfg.ShareCameras)
+	auth := "the intercom password"
+	if cfg.Password == "" {
+		auth = "home key " + homeFingerprint(cfg.HomeKey)
+	}
+	log.Printf("gundil-gateway %s \"%s\" (UDP port %d, %d relays, sharing cameras: %v, using %s)",
+		version, cfg.Name, g.mux.port(), len(cfg.Relays), cfg.ShareCameras, auth)
 	g.run()
 }
 

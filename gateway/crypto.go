@@ -167,6 +167,11 @@ func deriveRendezvous(password string, n int) rendezvousKeys {
 	if err != nil {
 		panic(err)
 	}
+	return rendezvousFromRoot(key)
+}
+
+// rendezvousFromRoot: the password's scrypt hash, or a home key's root.
+func rendezvousFromRoot(key []byte) rendezvousKeys {
 	return rendezvousKeys{
 		topic:      fmt.Sprintf("%x", hkdfBytes(key, nil, []byte("gundil/v1/topic"), 16)),
 		contentKey: hkdfBytes(key, nil, []byte("gundil/v1/content"), 32),

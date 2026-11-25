@@ -14,6 +14,7 @@ import (
 // writes it from UCI).
 type config struct {
 	Password     string
+	HomeKey      []byte // Used when Password is empty.
 	Name         string
 	ShareCameras bool
 	Relays       []string
@@ -88,6 +89,14 @@ func loadConfig(path string) (*config, error) {
 		switch strings.ReplaceAll(k, "-", "_") {
 		case "password":
 			c.Password = v
+		case "home_key":
+			if v != "" {
+				k, err := parseHomeKey(v)
+				if err != nil {
+					return nil, fmt.Errorf("%v (in %s)", err, path)
+				}
+				c.HomeKey = k
+			}
 		case "name":
 			if v != "" {
 				c.Name = v
@@ -114,7 +123,10 @@ func loadConfig(path string) (*config, error) {
 			fmt.Sscan(v, &c.ScryptN)
 		}
 	}
-	if len(c.Password) < 10 {
+	switch {
+	case c.Password == "" && c.HomeKey == nil:
+		return nil, fmt.Errorf("set password (the intercom password, 10+ characters) or home_key (the pairing code from a paired app) in %s", path)
+	case c.Password != "" && len(c.Password) < 10:
 		return nil, fmt.Errorf("password must be the intercom password, at least 10 characters (in %s)", path)
 	}
 	return c, nil
@@ -155,8 +167,12 @@ func loadState(path string) (*state, error) {
 const configTemplate = `# Gundil Intercom gateway: lets the Gundil apps reach the cameras on this
 # LAN over the internet (STUN + UDP hole punching, public Nostr relays).
 
-# The intercom password, the same as in the apps (at least 10 characters).
+# EITHER the intercom password, the same as in the apps (10+ characters)...
 password =
+
+# ...OR, when the apps use no password: the home key. In a paired app,
+# Settings > Internet calls > Pairing > Copy pairing code, and paste it here.
+# home_key = GUNDIL-PAIR-...
 
 # Name the apps show.
 name = Home gateway

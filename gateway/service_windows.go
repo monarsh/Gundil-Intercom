@@ -67,10 +67,10 @@ func installService(cfgPath string) error {
 		if err := os.WriteFile(cfgPath, []byte(configTemplate), 0o600); err != nil {
 			return err
 		}
-		// Only Administrators and SYSTEM may read it (it holds the password).
+		// Only Administrators and SYSTEM may read it (it holds the password or home key).
 		exec.Command("icacls", cfgPath, "/inheritance:r", "/grant:r",
 			"Administrators:F", "SYSTEM:F").Run()
-		fmt.Printf("Wrote %s: set the password there, then run install again.\n", cfgPath)
+		fmt.Printf("Wrote %s: set the password or home_key there, then run install again.\n", cfgPath)
 		return nil
 	}
 	if _, err := loadConfig(cfgPath); err != nil {

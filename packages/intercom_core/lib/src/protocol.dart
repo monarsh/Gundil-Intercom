@@ -101,6 +101,13 @@ enum MessageType {
   /// A tunnel ended, either side: `[tid:4]`.
   tunnelClose(0x15),
 
+  /// Asks for the home key (Internet calls without a password), on the LAN
+  /// only. The receiver's user must allow it: `{}`.
+  pairRequest(0x16),
+
+  /// The answer: `{"ok": true, "key": hex}` or `{"ok": false, "reason"}`.
+  pairReply(0x17),
+
   /// Key exchange, the first frame each side sends and the only plaintext
   /// one: `[version:1][X25519 public key:32]`.
   key(0x10),

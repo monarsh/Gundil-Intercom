@@ -11,6 +11,7 @@ export 'src/debug_log.dart';
 export 'src/discovery.dart';
 export 'src/internet/internet_service.dart'
     show NetworkCheck, InternetException;
+export 'src/internet/home_key.dart';
 export 'src/internet/stun.dart' show NatType;
 export 'src/echo_suppressor.dart';
 export 'src/mixer.dart';

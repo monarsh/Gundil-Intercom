@@ -16,7 +16,9 @@ dependencies:
   intercom_core:
     path: packages/intercom_core
   logging: ^1.3.0
+  mobile_scanner: ^7.5.0
   path_provider: ^2.1.6
+  qr: ^4.0.1
   shared_preferences: ^2.3.0
   video_player: ^2.14.1
 

@@ -33,6 +33,8 @@ class IntercomService extends IntercomCore with ChangeNotifier {
     super.internetMode,
     super.internetKey,
     super.onInternetKeyChanged,
+    super.homeKey,
+    super.onHomeKeyChanged,
     super.internetRelays,
     super.stunServers,
     super.shareCameras,

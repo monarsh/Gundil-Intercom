@@ -14,6 +14,7 @@ import 'intercom_panel.dart';
 import 'audio_device_picker.dart';
 import 'backup_dialog.dart';
 import 'camera_stream.dart';
+import 'pairing.dart';
 import 'peer_dialog.dart';
 import 'contacts_pane.dart';
 import 'debug_log_page.dart';
@@ -77,9 +78,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastTarget = service.target;
     service.addListener(_followSelection);
     WidgetsBinding.instance.addObserver(this);
-    _eventSub = service.events.listen(
-      (e) => _showMessage(e.message, error: e.error),
-    );
+    _eventSub = service.events.listen((e) {
+      if (e.kind == IntercomEventKind.pairRequest && e.peerId != null) {
+        if (mounted) showPairRequestDialog(context, service, e.peerId!);
+        return;
+      }
+      _showMessage(e.message, error: e.error);
+    });
   }
 
   void _showMessage(String message, {bool error = false}) {
@@ -219,8 +224,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     helperText:
                         'Calls are always encrypted. With a password, only '
                         'intercoms with the same password can connect: set '
-                        'it on every device.',
-                    helperMaxLines: 3,
+                        'it on every device. Without one, anyone on your '
+                        'Wi-Fi can connect, and Internet calls use the home '
+                        'key (Pairing).',
+                    helperMaxLines: 5,
                   ),
                   onSubmitted: (_) => Navigator.pop(ctx, true),
                 ),
@@ -326,11 +333,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'Internet calls (STUN + UDP hole punching)',
                   ),
                   subtitle: Text(
-                    'Reach intercoms with the same password from anywhere, '
-                    'without a VPN. Uses public Nostr relays and STUN '
-                    'servers; calls go directly between the devices, '
-                    'encrypted. Needs a password of at least '
-                    '${IntercomCore.internetMinPassword} characters.',
+                    'Reach your intercoms from anywhere, without a VPN. '
+                    'Uses public Nostr relays and STUN servers; calls go '
+                    'directly between the devices, encrypted. Uses the '
+                    'intercom password (at least '
+                    '${IntercomCore.internetMinPassword} characters), or the '
+                    'home key when there is none: pair each device once.',
                   ),
                   value: internet,
                   onChanged: (v) => setLocal(() {
@@ -339,12 +347,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   }),
                 ),
                 if (internet)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.vpn_key_outlined),
+                    title: const Text('Pairing'),
+                    subtitle: Text(
+                      passwordCtl.text.isNotEmpty
+                          ? 'Uses the intercom password'
+                          : service.homeKey == null
+                          ? 'Not paired yet: tap to pair'
+                          : 'Paired · home key ${service.homeKey!.fingerprint}',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await showPairingDialog(ctx, service);
+                      setLocal(() {});
+                    },
+                  ),
+                if (internet)
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Share home cameras over the internet'),
                     subtitle: const Text(
                       'Turn on for the intercom that stays at home, on the '
-                      "cameras' Wi-Fi: intercoms with the same password can "
+                      "cameras' Wi-Fi: your other intercoms can "
                       'then watch, hear and talk to the cameras from outside '
                       'through it. Only devices on this LAN are reachable.',
                     ),
@@ -456,12 +482,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         widget.settings.shareCameras = share;
       }
       if (internet != service.internetMode) {
+        if (internet &&
+            service.password.isEmpty &&
+            service.homeKey == null &&
+            mounted) {
+          await showPairingDialog(context, service);
+        }
         try {
           await service.setInternetMode(internet);
           if (mounted && internet) {
             _showMessage(
-              'Internet calls on. Turn them on on the other intercoms too '
-              '(same password).',
+              service.internetUsesPassword
+                  ? 'Internet calls on. Turn them on on the other intercoms '
+                        'too (same password).'
+                  : 'Internet calls on. Pair and turn them on on the other '
+                        'intercoms too.',
             );
           }
         } on ArgumentError catch (e) {

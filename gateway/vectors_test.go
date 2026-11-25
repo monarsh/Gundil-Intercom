@@ -23,6 +23,12 @@ type vectors struct {
 	PunchSid         string `json:"punchSid"`
 	PunchKey         string `json:"punchKey"`
 	PunchConnID      uint32 `json:"punchConnId"`
+	HomeKeyHex       string `json:"homeKeyHex"`
+	HomePairing      string `json:"homePairing"`
+	HomeFingerprint  string `json:"homeFingerprint"`
+	HomeLinkSecret   string `json:"homeLinkSecret"`
+	HomeTopic        string `json:"homeTopic"`
+	HomeContentKey   string `json:"homeContentKey"`
 }
 
 func h(s string) []byte {
@@ -77,9 +83,54 @@ func TestVectorsMatchTheApp(t *testing.T) {
 		t.Errorf("topic %s, want %s", rv.topic, v.Topic)
 	}
 	x("contentKey", rv.contentKey, v.ContentKey)
+	// The home key, from its pairing code.
+	hk, err := parseHomeKey(v.HomePairing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x("homeKey", hk, v.HomeKeyHex)
+	if pairingText(hk) != v.HomePairing {
+		t.Errorf("pairing %s, want %s", pairingText(hk), v.HomePairing)
+	}
+	if homeFingerprint(hk) != v.HomeFingerprint {
+		t.Errorf("fingerprint %s, want %s", homeFingerprint(hk), v.HomeFingerprint)
+	}
+	x("homeLinkSecret", homeLinkSecret(hk), v.HomeLinkSecret)
+	hr := homeRendezvous(hk)
+	if hr.topic != v.HomeTopic {
+		t.Errorf("home topic %s, want %s", hr.topic, v.HomeTopic)
+	}
+	x("homeContentKey", hr.contentKey, v.HomeContentKey)
 	id, key := punchKeys(rv.contentKey, v.PunchSid)
 	x("punchKey", key, v.PunchKey)
 	if id != v.PunchConnID {
 		t.Errorf("connId %d, want %d", id, v.PunchConnID)
+	}
+}
+
+func TestHomeKeyParsing(t *testing.T) {
+	k := make([]byte, 32)
+	for i := range k {
+		k[i] = byte(i)
+	}
+	text := pairingText(k)
+	got, err := parseHomeKey("  " + text[:20] + "\n" + text[20:])
+	if err != nil || hex.EncodeToString(got) != hex.EncodeToString(k) {
+		t.Fatalf("round trip: %v", err)
+	}
+	if _, err := parseHomeKey(hex.EncodeToString(k)); err != nil {
+		t.Fatal(err)
+	}
+	bad := []byte(text)
+	i := len(pairPrefix) + 5
+	if bad[i] == 'A' {
+		bad[i] = 'B'
+	} else {
+		bad[i] = 'A'
+	}
+	for _, s := range []string{string(bad), text[:len(text)-2], "hello"} {
+		if _, err := parseHomeKey(s); err == nil {
+			t.Errorf("accepted %q", s)
+		}
 	}
 }

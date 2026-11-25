@@ -91,6 +91,10 @@ class Settings {
   bool get shareCameras => _prefs.getBool('${_p}shareCameras') ?? false;
   set shareCameras(bool v) => _prefs.setBool('${_p}shareCameras', v);
 
+  /// The home key (hex, '' = not paired): Internet calls without a password.
+  String get homeKey => _prefs.getString('${_p}homeKey') ?? '';
+  set homeKey(String v) => _prefs.setString('${_p}homeKey', v);
+
   /// This device's Nostr key (hex), made the first time Internet calls run.
   String get internetKey => _prefs.getString('${_p}internetKey') ?? '';
   set internetKey(String v) => _prefs.setString('${_p}internetKey', v);

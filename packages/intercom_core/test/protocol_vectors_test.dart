@@ -32,7 +32,17 @@ Map<String, Object> vectors() {
     Uint8List.fromList(utf8.encode('gundil/v1/punch/0011223344556677')),
     36,
   );
+  final home = HomeKey.tryHex(
+    toHex(List.generate(32, (i) => (i * 7 + 3) & 0xff)),
+  )!;
+  final homeRv = RendezvousKeys.fromRoot(home.rendezvousRoot);
   return {
+    'homeKeyHex': home.hex,
+    'homePairing': home.pairingText,
+    'homeFingerprint': home.fingerprint,
+    'homeLinkSecret': toHex(home.linkSecret),
+    'homeTopic': homeRv.topic,
+    'homeContentKey': toHex(homeRv.contentKey),
     'password': password,
     'networkSecret': toHex(secret),
     'noPasswordSecret': toHex(networkSecret('')),
