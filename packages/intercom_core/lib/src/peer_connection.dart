@@ -104,6 +104,9 @@ class PeerConnection {
   /// "internet" for a hole-punched UDP path; null for the LAN or a VPN.
   String? get route => socket.route;
 
+  /// Bytes queued for sending (UDP paths; 0 on TCP).
+  int get pendingBytes => socket.pending;
+
   // Audio and video as datagrams (UDP paths only): no retransmission, so a
   // lost packet is a short gap instead of a delay. Audio is IMA ADPCM.
   DatagramCipher? _dgSealer, _dgOpener;

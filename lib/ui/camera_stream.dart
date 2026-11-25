@@ -186,16 +186,17 @@ class _CameraStageState extends State<CameraStage> {
       if (debug != null) {
         await debug(cam, x, y);
       } else {
-        if (_ptzFor != cam.peerId) {
+        if (_ptzFor != '${cam.peerId}@${cam.host}:${cam.onvifPort}') {
           _ptz?.close();
           _ptz = OnvifPtz(
             host: cam.host,
+            port: cam.onvifPort,
             username: cam.rtspUser,
             password: cam.rtspPassword,
             // Tapo: ONVIF's right is the camera's left.
             reversePan: cam.isTapo,
           );
-          _ptzFor = cam.peerId;
+          _ptzFor = '${cam.peerId}@${cam.host}:${cam.onvifPort}';
         }
         await _ptz!.move(x, y);
       }
@@ -275,7 +276,8 @@ class _CameraStageState extends State<CameraStage> {
       listenable: viewer,
       builder: (context, _) {
         final id = viewer.showing;
-        final cam = id == null ? null : widget.service.camera(id);
+        // Away from home: the camera through the home gateway.
+        final cam = id == null ? null : widget.service.cameraFor(id);
         _cameraChanged(cam?.peerId);
         if (cam == null) return const SizedBox.shrink();
         final url = cam.videoUrl(hd: viewer.hd);

@@ -173,6 +173,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final bootWas = await PlatformBridge.getStartOnBoot();
     var boot = bootWas;
     var internet = service.internetMode;
+    var share = service.shareCameras;
     String? netCheck;
     var checking = false;
     if (!mounted) return;
@@ -337,6 +338,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     netCheck = null;
                   }),
                 ),
+                if (internet)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Share home cameras over the internet'),
+                    subtitle: const Text(
+                      'Turn on for the intercom that stays at home, on the '
+                      "cameras' Wi-Fi: intercoms with the same password can "
+                      'then watch, hear and talk to the cameras from outside '
+                      'through it. Only devices on this LAN are reachable.',
+                    ),
+                    value: share,
+                    onChanged: (v) => setLocal(() => share = v),
+                  ),
                 if (internet && service.internetMode) ...[
                   Text(
                     service.internetProblem != null
@@ -436,6 +450,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 : 'Password set. Use the same one on every intercom.',
           );
         }
+      }
+      if (share != service.shareCameras) {
+        await service.setShareCameras(share);
+        widget.settings.shareCameras = share;
       }
       if (internet != service.internetMode) {
         try {

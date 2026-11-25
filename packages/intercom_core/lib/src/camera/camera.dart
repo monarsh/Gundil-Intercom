@@ -28,9 +28,38 @@ class SavedCamera {
     this.port = 8800,
     this.rtspPort = 554,
     this.rtspPath = '/stream2',
+    this.onvifPort = 2020,
+    this.controlPort = 443,
   });
 
   static const kindTapo = 'tapo', kindRtsp = 'rtsp';
+
+  /// ONVIF (pan & tilt, reboot) and the Tapo control interface (reboot).
+  /// Not saved: other values only in a copy reached through a gateway.
+  final int onvifPort, controlPort;
+
+  /// A copy with other connection details (a camera reached through a
+  /// gateway: local stand-ins on 127.0.0.1).
+  SavedCamera copyWith({
+    String? host,
+    int? port,
+    int? rtspPort,
+    int? onvifPort,
+    int? controlPort,
+  }) => SavedCamera(
+    key: key,
+    name: name,
+    host: host ?? this.host,
+    kind: kind,
+    cloudPassword: cloudPassword,
+    rtspUser: rtspUser,
+    rtspPassword: rtspPassword,
+    port: port ?? this.port,
+    rtspPort: rtspPort ?? this.rtspPort,
+    rtspPath: rtspPath,
+    onvifPort: onvifPort ?? this.onvifPort,
+    controlPort: controlPort ?? this.controlPort,
+  );
 
   final String key;
   final String name;

@@ -17,6 +17,7 @@ import 'internet/nostr.dart';
 import 'internet/rendezvous.dart';
 import 'internet/schnorr.dart';
 import 'internet/stun.dart';
+import 'internet/tunnel.dart';
 import 'echo_suppressor.dart';
 import 'mixer.dart';
 import 'models.dart';
@@ -125,7 +126,9 @@ class IntercomCore {
     this.onInternetKeyChanged,
     this.internetRelays = defaultRelays,
     this.stunServers = defaultStunServers,
+    bool shareCameras = false,
   }) : _name = name, // ignore: prefer_initializing_formals
+       _shareCameras = shareCameras,
        _internetMode = internetMode,
        _internetKey = internetKey,
        _password = password,
@@ -360,6 +363,7 @@ class IntercomCore {
         platform: Platform.operatingSystem,
         version: protocolVersion,
         at: DateTime.now(),
+        subnets: _sharedSubnets,
       ),
       onPresence: _onPresence,
       onIncoming: (link) {
@@ -428,6 +432,68 @@ class IntercomCore {
     changed();
   }
 
+  // ------------------------------------------- cameras through a gateway
+
+  bool _shareCameras;
+  List<String> _sharedSubnets = const [];
+  late final TunnelHub _tunnels = TunnelHub(
+    linkTo: (id) {
+      final p = _peers[id];
+      if (p == null) throw StateError('gateway $id is gone');
+      return _linkTo(p);
+    },
+    sharing: () => _shareCameras,
+  );
+
+  /// Cameras reached through a gateway: camera peer id → gateway peer id,
+  /// and the camera as reached there (local stand-ins).
+  final Map<String, String> _cameraVia = {};
+  final Map<String, SavedCamera> _tunnelCams = {};
+
+  /// This intercom lets the others reach cameras on its LAN over the
+  /// internet (it's the gateway at home).
+  bool get shareCameras => _shareCameras;
+
+  Future<void> setShareCameras(bool on) async {
+    if (on == _shareCameras) return;
+    _shareCameras = on;
+    await _updateSharedSubnets();
+    _internet?.announce();
+    changed();
+  }
+
+  Future<void> _updateSharedSubnets() async {
+    _sharedSubnets = !_shareCameras
+        ? const []
+        : debugSharedSubnets ?? (await localSubnets()).$1;
+  }
+
+  /// Tests: the subnets a sharing intercom announces.
+  static List<String>? debugSharedSubnets;
+
+  /// Tests: cameras (peer ids) that don't answer directly.
+  static final Set<String> debugCameraUnreachable = {};
+
+  /// [peerId] as the app must reach it: the saved camera, or (away from
+  /// home) local stand-ins forwarded through the gateway.
+  SavedCamera? cameraFor(String peerId) =>
+      _tunnelCams[peerId] ?? _cameras[peerId];
+
+  /// The intercom a camera is reached through (null: directly).
+  String? cameraGateway(String peerId) {
+    final g = _cameraVia[peerId];
+    return g == null ? null : displayName(g);
+  }
+
+  /// An online intercom that shares the LAN [cam] is on.
+  Peer? _gatewayFor(SavedCamera cam) {
+    for (final p in _peers.values) {
+      if (p.camera || !p.internet) continue;
+      if (p.sharesSubnets.any((n) => inSubnet(cam.host, n))) return p;
+    }
+    return null;
+  }
+
   /// How a call to [peerId] travels: "internet" over a hole-punched path,
   /// null for the LAN or a VPN (or no link).
   String? routeTo(String peerId) => _links[peerId]?.route;
@@ -441,7 +507,7 @@ class IntercomCore {
     final busy = _conversation?.members.keys.toSet() ?? const <String>{};
     for (final c in _allConnections.toList()) {
       if (c.route != 'internet' || c.isClosed) continue;
-      if (busy.contains(c.remoteId)) {
+      if (busy.contains(c.remoteId) || _tunnels.busy(c)) {
         _internetIdle.remove(c);
         continue;
       }
@@ -905,6 +971,7 @@ class IntercomCore {
         final kind = await hooks.networkKind();
         if (!_shutDown) setNetworkKind(kind);
       } catch (_) {}
+      await _updateSharedSubnets();
       if (!first && !_shutDown) networkChanged();
     } catch (e) {
       log('Could not list network interfaces: $e');
@@ -1195,6 +1262,7 @@ class IntercomCore {
     _housekeeping?.cancel();
     _reconnect?.cancel();
     _netWatch?.cancel();
+    _tunnels.dispose();
     await _internet?.stop();
     _internet = null;
     await _discovery?.dispose();
@@ -1457,7 +1525,7 @@ class IntercomCore {
   /// it was done; throws [CameraException] saying why each way failed. The
   /// camera shows offline until it answers again (about a minute).
   Future<String> rebootCamera(String peerId) async {
-    final cam = _cameras[peerId];
+    final cam = cameraFor(peerId);
     if (cam == null) throw CameraException('No such camera');
     if (!cam.isTapo) {
       throw CameraException('Restarting works for Tapo cameras only');
@@ -1469,6 +1537,7 @@ class IntercomCore {
       try {
         await OnvifPtz(
           host: cam.host,
+          port: cam.onvifPort,
           username: cam.rtspUser,
           password: cam.rtspPassword,
         ).reboot();
@@ -1483,6 +1552,7 @@ class IntercomCore {
       try {
         await TapoControl(
           host: cam.host,
+          port: cam.controlPort,
           cloudPassword: cam.cloudPassword,
         ).reboot();
         via = 'the Tapo app\'s command, with the cloud password';
@@ -1686,6 +1756,9 @@ class IntercomCore {
           if (cam.isTapo && cam.cloudPassword.isNotEmpty) cam.port,
         ]) {
           try {
+            if (debugCameraUnreachable.contains(cam.peerId)) {
+              throw const SocketException('unreachable (test)');
+            }
             final s = await Socket.connect(
               cam.host,
               port,
@@ -1709,10 +1782,35 @@ class IntercomCore {
         if (_cameraSessions.containsKey(cam.peerId)) return; // Call started.
         if (ok) {
           _cameraMisses.remove(cam.peerId);
+          if (_cameraVia.remove(cam.peerId) != null) {
+            // Back home: directly again.
+            _tunnelCams.remove(cam.peerId);
+            _tunnels.closeProxies(cam.peerId);
+            debugLog('check', '${cam.name}: reachable directly again');
+            changed();
+          }
         } else {
           final misses = (_cameraMisses[cam.peerId] ?? 0) + 1;
           _cameraMisses[cam.peerId] = misses;
           if (misses < 2) return;
+          // Away from home: through an intercom that shares its LAN.
+          final gw = _gatewayFor(cam);
+          if (gw != null) {
+            _cameraMisses.remove(cam.peerId); // Checked at the usual pace.
+            if (_cameraVia[cam.peerId] != gw.id) {
+              _cameraVia[cam.peerId] = gw.id;
+              _tunnels.closeProxies(cam.peerId);
+              try {
+                _tunnelCams[cam.peerId] = await _tunnels.proxy(cam, gw.id);
+              } catch (e) {
+                debugLog('check', '${cam.name}: no local stand-ins: $e');
+              }
+            }
+            ok = true;
+          } else if (_cameraVia.remove(cam.peerId) != null) {
+            _tunnelCams.remove(cam.peerId);
+            _tunnels.closeProxies(cam.peerId);
+          }
         }
         if (p.reachable == ok) return;
         p.reachable = ok;
@@ -1738,7 +1836,7 @@ class IntercomCore {
   /// Opens the audio connection with camera [id] for [conv]. A camera that
   /// refuses (busy) is tried again every second for [cameraBusyRetry].
   Future<void> _callCamera(Conversation conv, String id) async {
-    final cam = _cameras[id];
+    final cam = cameraFor(id);
     if (cam == null) return;
     bool stillCalling() =>
         identical(_conversation, conv) &&
@@ -2377,6 +2475,7 @@ class IntercomCore {
 
   void _onConnectionClosed(PeerConnection c) {
     _allConnections.remove(c);
+    _tunnels.connectionClosed(c);
     _helloPending.remove(c);
     if (c.failure == LinkFailure.wrongPassword) {
       // We don't know its id (its HELLO didn't decrypt): match the address.
@@ -2513,6 +2612,14 @@ class IntercomCore {
         _onRoster(id, f.json);
       case MessageType.relayAudio:
         _onRelayAudio(id, f.payload);
+      case MessageType.tunnelOpen:
+        unawaited(_tunnels.onOpen(c, f.json));
+      case MessageType.tunnelReply:
+        _tunnels.onReply(c, f.json);
+      case MessageType.tunnelData:
+        _tunnels.onData(c, f.payload);
+      case MessageType.tunnelClose:
+        _tunnels.onClose(c, f.payload);
       case MessageType.key || MessageType.sealed:
         break; // Handled by PeerConnection.
     }

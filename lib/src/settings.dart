@@ -87,6 +87,10 @@ class Settings {
   bool get internetMode => _prefs.getBool('${_p}internetMode') ?? false;
   set internetMode(bool v) => _prefs.setBool('${_p}internetMode', v);
 
+  /// Let intercoms outside reach the cameras on this device's LAN.
+  bool get shareCameras => _prefs.getBool('${_p}shareCameras') ?? false;
+  set shareCameras(bool v) => _prefs.setBool('${_p}shareCameras', v);
+
   /// This device's Nostr key (hex), made the first time Internet calls run.
   String get internetKey => _prefs.getString('${_p}internetKey') ?? '';
   set internetKey(String v) => _prefs.setString('${_p}internetKey', v);

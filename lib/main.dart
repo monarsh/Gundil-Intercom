@@ -49,6 +49,7 @@ Future<void> main() async {
     internetMode: settings.internetMode,
     internetKey: settings.internetKey,
     onInternetKeyChanged: (k) => settings.internetKey = k,
+    shareCameras: settings.shareCameras,
   );
   await service.start();
   // iPhone: the audio engine set up its audio session just now; background

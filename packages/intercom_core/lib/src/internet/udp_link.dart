@@ -226,7 +226,9 @@ class UdpTransport implements LinkTransport, DatagramChannel {
   int _port;
 
   // Sending.
-  final Queue<int> _outBytes = Queue<int>();
+  final Queue<Uint8List> _out = Queue<Uint8List>();
+  int _outLen = 0;
+  int _outHead = 0; // Bytes of _out.first already sent.
   final SplayTreeMap<int, _Segment> _inFlight = SplayTreeMap();
   int _nextSeq = 0;
   double _cwnd = 10;
@@ -258,7 +260,7 @@ class UdpTransport implements LinkTransport, DatagramChannel {
   String get debugState =>
       'closed=$_closed inFlight=${_inFlight.length} '
       'first=${_inFlight.isEmpty ? '-' : '${_inFlight.firstKey()} x${_inFlight.values.first.sends}'} '
-      'out=${_outBytes.length} cwnd=${_cwnd.toStringAsFixed(1)} '
+      'out=$_outLen cwnd=${_cwnd.toStringAsFixed(1)} '
       'next=$_nextSeq lastAck=$_lastAck expected=$_expected early=${_early.length} '
       'srtt=${_srtt.inMilliseconds}ms';
 
@@ -270,6 +272,9 @@ class UdpTransport implements LinkTransport, DatagramChannel {
   InternetAddress? get localAddress => null;
   @override
   String? get route => 'internet';
+  @override
+  int get pending =>
+      _outLen + _inFlight.values.fold(0, (n, s) => n + s.data.length);
   @override
   DatagramChannel? get datagrams => this;
   @override
@@ -300,18 +305,30 @@ class UdpTransport implements LinkTransport, DatagramChannel {
   @override
   void add(List<int> data) {
     if (_closed) throw const SocketException('link closed');
-    _outBytes.addAll(data);
+    if (data.isEmpty) return;
+    _out.add(data is Uint8List ? data : Uint8List.fromList(data));
+    _outLen += data.length;
     _pump();
   }
 
   /// Sends new segments while the window allows.
   void _pump() {
-    while (_outBytes.isNotEmpty && _inFlight.length < _cwnd.floor()) {
-      final n = min(segmentSize, _outBytes.length);
+    while (_outLen > 0 && _inFlight.length < _cwnd.floor()) {
+      final n = min(segmentSize, _outLen);
       final chunk = Uint8List(n);
-      for (var i = 0; i < n; i++) {
-        chunk[i] = _outBytes.removeFirst();
+      var filled = 0;
+      while (filled < n) {
+        final head = _out.first;
+        final take = min(n - filled, head.length - _outHead);
+        chunk.setRange(filled, filled + take, head, _outHead);
+        filled += take;
+        _outHead += take;
+        if (_outHead == head.length) {
+          _out.removeFirst();
+          _outHead = 0;
+        }
       }
+      _outLen -= n;
       final s = _Segment(_nextSeq++, chunk);
       _inFlight[s.seq] = s;
       _transmit(s);
@@ -455,7 +472,7 @@ class UdpTransport implements LinkTransport, DatagramChannel {
 
   void _checkFlushed() {
     final f = _flushed;
-    if (f != null && _outBytes.isEmpty && _inFlight.isEmpty) {
+    if (f != null && _outLen == 0 && _inFlight.isEmpty) {
       _flushed = null;
       if (!f.isCompleted) f.complete();
     }
@@ -463,7 +480,7 @@ class UdpTransport implements LinkTransport, DatagramChannel {
 
   @override
   Future<void> flush() {
-    if (_outBytes.isEmpty && _inFlight.isEmpty) return Future.value();
+    if (_outLen == 0 && _inFlight.isEmpty) return Future.value();
     final f = _flushed ??= Completer<void>();
     return f.future;
   }

@@ -88,6 +88,19 @@ enum MessageType {
   /// forwarded by a member that reaches both: `[id length:1][id][PCM]`.
   relayAudio(0x0E),
 
+  /// Opens a TCP connection through a gateway intercom (cameras over the
+  /// internet): `{"tid", "host", "port"}`.
+  tunnelOpen(0x12),
+
+  /// The gateway's answer: `{"tid", "ok": bool, "error"}`.
+  tunnelReply(0x13),
+
+  /// Bytes of a tunnel, either way: `[tid:4][bytes]`.
+  tunnelData(0x14),
+
+  /// A tunnel ended, either side: `[tid:4]`.
+  tunnelClose(0x15),
+
   /// Key exchange, the first frame each side sends and the only plaintext
   /// one: `[version:1][X25519 public key:32]`.
   key(0x10),

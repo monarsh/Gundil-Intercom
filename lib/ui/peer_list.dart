@@ -368,7 +368,10 @@ class PeerList extends StatelessWidget {
   /// "Tapo · 192.168.1.50", "RTSP · gate.local", "Offline · …".
   String _cameraInfo(PeerEntry e) {
     final cam = service.camera(e.peerId!)!;
-    final text = '${cam.isTapo ? 'Tapo' : 'RTSP'} · ${cam.host}';
+    final via = service.cameraGateway(e.peerId!);
+    final text =
+        '${cam.isTapo ? 'Tapo' : 'RTSP'} · ${cam.host}'
+        '${via == null ? '' : ' · via $via 🌐'}';
     return e.online ? text : 'Offline · $text';
   }
 

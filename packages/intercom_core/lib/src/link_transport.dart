@@ -29,6 +29,9 @@ abstract class LinkTransport {
 
   /// "internet" for a hole-punched path; null for an ordinary socket.
   String? get route => null;
+
+  /// Bytes waiting to be sent (0 when unknown): to slow down a sender.
+  int get pending => 0;
 }
 
 abstract class DatagramChannel {
@@ -85,4 +88,6 @@ class SocketTransport implements LinkTransport {
   DatagramChannel? get datagrams => null;
   @override
   String? get route => null;
+  @override
+  int get pending => 0;
 }

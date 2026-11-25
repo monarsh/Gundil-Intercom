@@ -39,6 +39,9 @@ class NodeConfig {
         'Internet calls (STUN + UDP hole punching) through public Nostr '
         'relays: true/false (default false; needs a password of 10+ '
         'characters)',
+    'share-cameras':
+        'Let intercoms outside reach the cameras on this LAN through this '
+        'node (with internet = true): true/false (default false)',
     'peers': 'Comma-separated host[:port] list to add by IP (optional)',
     'button-gpio':
         'GPIO number of the connect / hang-up button (e.g. 6 = PA6, pin 7)',

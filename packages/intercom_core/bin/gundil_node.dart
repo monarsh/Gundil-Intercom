@@ -72,6 +72,7 @@ Future<void> main(List<String> args) async {
     cameras: state.cameras,
     onCamerasChanged: (list) => state.save(cameras: list),
     internetMode: cfg.flag('internet', fallback: false),
+    shareCameras: cfg.flag('share-cameras', fallback: false),
     internetKey: state.internetKey,
     onInternetKeyChanged: (k) {
       state.internetKey = k;
