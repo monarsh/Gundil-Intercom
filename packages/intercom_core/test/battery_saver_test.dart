@@ -29,14 +29,22 @@ class _Counter {
     _server.listen((client) async {
       final up = await Socket.connect(InternetAddress.loopbackIPv4, target);
       _sockets.addAll([client, up]);
-      client.listen((d) {
-        chunks++;
-        up.add(d);
-      }, onDone: up.destroy, onError: (_) => up.destroy());
-      up.listen((d) {
-        chunks++;
-        client.add(d);
-      }, onDone: client.destroy, onError: (_) => client.destroy());
+      client.listen(
+        (d) {
+          chunks++;
+          up.add(d);
+        },
+        onDone: up.destroy,
+        onError: (_) => up.destroy(),
+      );
+      up.listen(
+        (d) {
+          chunks++;
+          client.add(d);
+        },
+        onDone: client.destroy,
+        onError: (_) => client.destroy(),
+      );
     });
   }
   static Future<_Counter> start(int target) async => _Counter._(

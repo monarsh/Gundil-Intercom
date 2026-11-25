@@ -287,3 +287,92 @@ class FrameCipher {
     return n == out.length ? out : Uint8List.sublistView(out, 0, n);
   }
 }
+
+/// Like [FrameCipher], for UDP: packets can be lost or arrive out of order,
+/// so the nonce is a sequence number sent with each packet. A packet seen
+/// before, or older than the last [window] ones, is refused (replay).
+class DatagramCipher {
+  DatagramCipher(this._key);
+
+  static const int window = 1024;
+
+  final Uint8List _key;
+  int _sendSeq = 0;
+  int _highest = -1;
+  final Set<int> _seen = {};
+
+  static Uint8List _nonce(int seq) {
+    final n = Uint8List(12);
+    ByteData.sublistView(n).setUint64(4, seq);
+    return n;
+  }
+
+  /// The next sequence number and the sealed `[type][payload]`.
+  (int, Uint8List) seal(int type, Uint8List payload) {
+    final seq = _sendSeq++;
+    final plain = Uint8List(1 + payload.length)
+      ..[0] = type
+      ..setRange(1, 1 + payload.length, payload);
+    final c = ChaCha20Poly1305(
+      ChaCha7539Engine(),
+      Poly1305(),
+    )..init(true, AEADParameters(KeyParameter(_key), 128, _nonce(seq), _noAad));
+    return (seq, FrameCipher._run(c, plain));
+  }
+
+  /// Opens packet [seq]; throws [InvalidCipherTextException] when it was
+  /// tampered with, sealed with another key, or replayed.
+  (int, Uint8List) open(int seq, Uint8List sealed) {
+    if (sealed.length < sealOverhead) {
+      throw InvalidCipherTextException('sealed packet too short');
+    }
+    if (seq <= _highest - window || _seen.contains(seq)) {
+      throw InvalidCipherTextException('replayed packet');
+    }
+    final c = ChaCha20Poly1305(ChaCha7539Engine(), Poly1305())
+      ..init(
+        false,
+        AEADParameters(KeyParameter(_key), 128, _nonce(seq), _noAad),
+      );
+    final Uint8List plain;
+    try {
+      plain = FrameCipher._run(c, sealed);
+    } on ArgumentError {
+      throw InvalidCipherTextException('packet failed authentication');
+    }
+    _seen.add(seq);
+    if (seq > _highest) {
+      _highest = seq;
+      _seen.removeWhere((s) => s <= _highest - window);
+    }
+    return (plain[0], Uint8List.sublistView(plain, 1));
+  }
+
+  static final Uint8List _noAad = Uint8List(0);
+}
+
+/// ChaCha20-Poly1305 with a random nonce, for small messages that travel
+/// through someone else's server (Nostr relays): `nonce(12) || sealed`.
+Uint8List sealMessage(Uint8List key, Uint8List plain) {
+  final nonce = randomBytes(12);
+  final c = ChaCha20Poly1305(ChaCha7539Engine(), Poly1305())
+    ..init(true, AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)));
+  return Uint8List.fromList([...nonce, ...FrameCipher._run(c, plain)]);
+}
+
+/// Opens [sealMessage]'s output; throws [InvalidCipherTextException].
+Uint8List openMessage(Uint8List key, Uint8List data) {
+  if (data.length < 12 + 16) {
+    throw InvalidCipherTextException('message too short');
+  }
+  final c = ChaCha20Poly1305(ChaCha7539Engine(), Poly1305())
+    ..init(
+      false,
+      AEADParameters(KeyParameter(key), 128, data.sublist(0, 12), Uint8List(0)),
+    );
+  try {
+    return FrameCipher._run(c, Uint8List.sublistView(data, 12));
+  } on ArgumentError {
+    throw InvalidCipherTextException('message failed authentication');
+  }
+}
