@@ -9,6 +9,9 @@ export 'src/camera/tapo_control.dart';
 export 'src/contacts_backup.dart';
 export 'src/debug_log.dart';
 export 'src/discovery.dart';
+export 'src/internet/internet_service.dart'
+    show NetworkCheck, InternetException;
+export 'src/internet/stun.dart' show NatType;
 export 'src/echo_suppressor.dart';
 export 'src/mixer.dart';
 export 'src/intercom_core.dart';

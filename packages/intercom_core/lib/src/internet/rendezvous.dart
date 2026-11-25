@@ -74,8 +74,12 @@ class Presence {
     required this.version,
     required this.at,
     this.subnets = const [],
+    this.gone = false,
   });
   final String id, name, platform;
+
+  /// The device is leaving (internet mode off, app closing).
+  final bool gone;
   final int version;
   final DateTime at;
 
@@ -174,6 +178,7 @@ class Rendezvous {
           'v': p.version,
           'ts': now,
           if (p.subnets.isNotEmpty) 'subnets': p.subnets,
+          if (p.gone) 'gone': true,
         }),
       ),
     );
@@ -220,6 +225,7 @@ class Rendezvous {
           platform: (m['platform'] as String?) ?? '?',
           version: (m['v'] as int?) ?? 0,
           at: at,
+          gone: m['gone'] == true,
           subnets: [
             if (subnets is List)
               for (final s in subnets.take(8))

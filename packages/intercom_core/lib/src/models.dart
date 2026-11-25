@@ -41,6 +41,19 @@ class Peer {
   /// Last time we heard a discovery beacon from this peer.
   DateTime? lastBeacon;
 
+  /// Last presence over the internet (Nostr relays); null: not seen there.
+  DateTime? internetSeen;
+
+  /// Its presence over the internet is recent: it can be called that way.
+  bool get internet {
+    final t = internetSeen;
+    return t != null &&
+        DateTime.now().difference(t) < const Duration(minutes: 15);
+  }
+
+  /// LAN subnets it shares cameras on over the internet ("192.168.1.0/24").
+  List<String> sharesSubnets = const [];
+
   /// How often it announces itself, when slower than usual (battery
   /// saving); null: the usual 2 s.
   Duration? beaconEvery;
@@ -69,7 +82,7 @@ class Peer {
   static const Duration beaconTimeout = Duration(seconds: 7);
 
   bool get online {
-    if (connected || reachable) return true;
+    if (connected || reachable || internet) return true;
     final b = lastBeacon;
     if (b == null) return false;
     final every = beaconEvery;

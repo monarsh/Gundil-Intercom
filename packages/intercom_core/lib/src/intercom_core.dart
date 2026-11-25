@@ -12,6 +12,11 @@ import 'camera/tapo_control.dart';
 import 'contacts_backup.dart';
 import 'debug_log.dart';
 import 'discovery.dart';
+import 'internet/internet_service.dart';
+import 'internet/nostr.dart';
+import 'internet/rendezvous.dart';
+import 'internet/schnorr.dart';
+import 'internet/stun.dart';
 import 'echo_suppressor.dart';
 import 'mixer.dart';
 import 'models.dart';
@@ -115,7 +120,14 @@ class IntercomCore {
     this.onCamerasChanged,
     this.reconnectInterval = const Duration(seconds: 5),
     this.hooks = const PlatformHooks(),
+    bool internetMode = false,
+    String internetKey = '',
+    this.onInternetKeyChanged,
+    this.internetRelays = defaultRelays,
+    this.stunServers = defaultStunServers,
   }) : _name = name, // ignore: prefer_initializing_formals
+       _internetMode = internetMode,
+       _internetKey = internetKey,
        _password = password,
        _speakerVolume = speakerVolume.clamp(0.0, maxVolume),
        _micVolume = micVolume.clamp(0.0, maxVolume),
@@ -263,6 +275,186 @@ class IntercomCore {
   ServerSocket? _server;
   Discovery? _discovery;
 
+  // ------------------------------------------------------- internet mode
+
+  bool _internetMode;
+  String _internetKey;
+  final void Function(String key)? onInternetKeyChanged;
+  final List<String> internetRelays;
+  final List<(String, int)> stunServers;
+  InternetService? _internet;
+  String? _internetProblem;
+
+  /// Tests: weaker password hardening (scrypt N), for speed.
+  static int internetScryptN = 1 << 15;
+
+  /// The shortest intercom password Internet calls accept: anyone who
+  /// knows it can find and call these intercoms from anywhere.
+  static const int internetMinPassword = 10;
+
+  bool get internetMode => _internetMode;
+
+  /// Why Internet calls aren't running although switched on (null: fine).
+  String? get internetProblem => _internetProblem;
+
+  /// Relays connected / configured (0 when off).
+  int get internetRelaysConnected => _internet?.relaysConnected ?? 0;
+  int get internetRelaysTotal => internetRelays.length;
+
+  /// Peers' public addresses are never shown; this is our own, from STUN.
+  String? get internetPublicAddress => _internet?.publicAddress;
+  NatType get internetNat => _internet?.natType ?? NatType.unknown;
+
+  /// Turns Internet calls on or off. Refused (ArgumentError) on with a
+  /// password shorter than [internetMinPassword].
+  Future<void> setInternetMode(bool on) async {
+    if (on && _password.length < internetMinPassword) {
+      throw ArgumentError(
+        'Internet calls need an intercom password of at least '
+        '$internetMinPassword characters (Settings)',
+      );
+    }
+    if (on == _internetMode) return;
+    _internetMode = on;
+    if (on) {
+      await _startInternet();
+    } else {
+      await _stopInternet();
+    }
+    changed();
+  }
+
+  /// "Check network": relays, NAT type, public address.
+  Future<NetworkCheck?> checkInternet() async => _internet?.check();
+
+  Future<void> _startInternet() async {
+    if (_internet != null || _shutDown) return;
+    if (_password.length < internetMinPassword) {
+      _internetProblem =
+          'needs an intercom password of at least $internetMinPassword '
+          'characters';
+      changed();
+      return;
+    }
+    _internetProblem = null;
+    var key = _internetKey;
+    if (key.length != 64) {
+      key = toHex(randomBytes(32));
+      _internetKey = key;
+      onInternetKeyChanged?.call(key);
+    }
+    final password = _password;
+    final keys = internetScryptN == 1 << 15
+        ? await RendezvousKeys.deriveAsync(password)
+        : RendezvousKeys.derive(password, n: internetScryptN);
+    if (!_internetMode || _shutDown || password != _password) return;
+    final svc = InternetService(
+      selfId: selfId,
+      keys: keys,
+      nostrSecret: fromHex(key),
+      relays: internetRelays,
+      stunServers: stunServers,
+      presence: () => Presence(
+        id: selfId,
+        name: _name,
+        platform: Platform.operatingSystem,
+        version: protocolVersion,
+        at: DateTime.now(),
+      ),
+      onPresence: _onPresence,
+      onIncoming: (link) {
+        if (_shutDown) {
+          link.destroy();
+          return;
+        }
+        _adopt(
+          PeerConnection.over(link, outgoing: false, secret: _secret),
+          incoming: true,
+        );
+      },
+    );
+    _internet = svc;
+    svc.refreshEvery = _netKind == NetworkKind.mobile
+        ? const Duration(minutes: 10)
+        : const Duration(minutes: 5);
+    try {
+      await svc.start();
+    } catch (e) {
+      _internet = null;
+      _internetProblem = 'could not start: $e';
+      log('Internet calls: could not start: $e');
+    }
+    svc.relayStatus.listen((_) => changed());
+    changed();
+  }
+
+  Future<void> _stopInternet() async {
+    final svc = _internet;
+    _internet = null;
+    for (final c in _allConnections.toList()) {
+      if (c.route == 'internet') await c.close();
+    }
+    for (final p in _peers.values) {
+      p.internetSeen = null;
+    }
+    await svc?.stop();
+  }
+
+  void _onPresence(Presence pr) {
+    var p = _peers[pr.id];
+    if (pr.gone) {
+      if (p != null) {
+        p.internetSeen = null;
+        changed();
+      }
+      return;
+    }
+    if (p == null) {
+      p = Peer(
+        id: pr.id,
+        name: pr.name,
+        platform: pr.platform,
+        address: InternetAddress.anyIPv4,
+        port: 0,
+      );
+      _peers[pr.id] = p;
+      _resolveSaved(p);
+    }
+    p
+      ..internetSeen = pr.at
+      ..sharesSubnets = pr.subnets;
+    if (p.version == 0) p.version = pr.version;
+    if (p.name.isEmpty || p.address.address == '0.0.0.0') p.name = pr.name;
+    changed();
+  }
+
+  /// How a call to [peerId] travels: "internet" over a hole-punched path,
+  /// null for the LAN or a VPN (or no link).
+  String? routeTo(String peerId) => _links[peerId]?.route;
+
+  /// Internet links not used by a call: closed after a minute, so idle
+  /// costs nothing but the relay connections.
+  final Map<PeerConnection, DateTime> _internetIdle = {};
+
+  void _closeIdleInternetLinks() {
+    final now = DateTime.now();
+    final busy = _conversation?.members.keys.toSet() ?? const <String>{};
+    for (final c in _allConnections.toList()) {
+      if (c.route != 'internet' || c.isClosed) continue;
+      if (busy.contains(c.remoteId)) {
+        _internetIdle.remove(c);
+        continue;
+      }
+      final since = _internetIdle.putIfAbsent(c, () => now);
+      if (now.difference(since) > const Duration(seconds: 60)) {
+        log('Closing the idle internet link to ${c.remoteId}');
+        _internetIdle.remove(c);
+        c.close();
+      }
+    }
+    _internetIdle.removeWhere((c, _) => c.isClosed);
+  }
+
   NetworkKind _netKind = NetworkKind.unknown;
 
   /// What the device is on (phones), which sets the idle battery saving.
@@ -286,6 +478,9 @@ class IntercomCore {
   void setNetworkKind(NetworkKind k) {
     if (k == _netKind) return;
     _netKind = k;
+    _internet?.refreshEvery = k == NetworkKind.mobile
+        ? const Duration(minutes: 10)
+        : const Duration(minutes: 5);
     log(
       'On ${k.name}: ${k == NetworkKind.unknown ? 'no battery saving' : 'saving battery while idle (keep-alive every ${idlePing(k).inSeconds} s)'}',
     );
@@ -508,6 +703,11 @@ class IntercomCore {
     for (final p in _peers.values) {
       p.wrongPassword = false;
     }
+    // Another password is another meeting place on the relays.
+    if (_internetMode) {
+      await _stopInternet();
+      await _startInternet();
+    }
     changed();
     _retrySaved();
   }
@@ -619,12 +819,14 @@ class IntercomCore {
       _applyAnnounce();
       _checkConversation();
       _keepLinksAlive();
+      _closeIdleInternetLinks();
       changed();
     });
     _reconnect = Timer.periodic(reconnectInterval, (_) => _retrySavedDue());
     _netWatch = Timer.periodic(networkCheckInterval, (_) => _checkNetwork());
     await _checkNetwork();
     _retrySaved();
+    if (_internetMode) await _startInternet();
     changed();
   }
 
@@ -747,6 +949,7 @@ class IntercomCore {
       if (!c.isClosed && c.verified) c.send(_hello());
     }
     _restartDiscovery();
+    _internet?.networkChanged();
     // Give the new network a moment (DHCP, VPN handshake), then reconnect.
     for (final delay in const [Duration(seconds: 1), Duration(seconds: 5)]) {
       Future<void>.delayed(delay, () {
@@ -891,9 +1094,9 @@ class IntercomCore {
       if (!out.any((e) => e.$1 == a && e.$2 == port)) out.add((a, port));
     }
 
-    add(p.address, p.port);
+    if (p.address.address != '0.0.0.0' && p.port > 0) add(p.address, p.port);
     for (final e in p.endpoints) {
-      add(e.$1, e.$2);
+      if (e.$1.address != '0.0.0.0' && e.$2 > 0) add(e.$1, e.$2);
     }
     for (final s in _saved.where((s) => s.peerId == p.id)) {
       for (final h in s.hosts) {
@@ -904,9 +1107,18 @@ class IntercomCore {
     }
     // Last, the other addresses the peer told us it has.
     for (final a in p.announced) {
-      add(a, p.port);
+      if (p.port > 0) add(a, p.port);
     }
-    return _connectAny(out);
+    final internet = _internet;
+    if (internet == null || !p.internet) return _connectAny(out);
+    // On the LAN or a VPN first; over the internet if that fails.
+    if (out.isNotEmpty) {
+      try {
+        return await _connectAny(out);
+      } catch (_) {}
+    }
+    final link = await internet.connect(p.id, name: displayName(p.id));
+    return PeerConnection.over(link, outgoing: true, secret: _secret);
   }
 
   /// IPv4 addresses of [host] (an IP address or a name, e.g. a Tailscale
@@ -983,6 +1195,8 @@ class IntercomCore {
     _housekeeping?.cancel();
     _reconnect?.cancel();
     _netWatch?.cancel();
+    await _internet?.stop();
+    _internet = null;
     await _discovery?.dispose();
     await hooks.releaseMulticastLock();
     for (final c in _allConnections.toList()) {
@@ -2419,7 +2633,9 @@ class IntercomCore {
         } catch (e) {
           if (!identical(_conversation, conv)) return;
           _emit(
-            'Could not reach ${displayName(p.id)}: ${_short(e)}',
+            e is InternetException
+                ? e.message
+                : 'Could not reach ${displayName(p.id)}: ${_short(e)}',
             error: true,
           );
           _removeMember(p.id);
