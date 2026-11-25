@@ -27,6 +27,7 @@ class Peer {
 
   /// Remembers [address]:[port] as the newest way to reach the peer.
   void noteEndpoint(InternetAddress address, int port) {
+    if (port <= 0 || address.address == '0.0.0.0') return;
     endpoints.removeWhere((e) => e.$1 == address && e.$2 == port);
     endpoints.insert(0, (address, port));
     if (endpoints.length > maxEndpoints) endpoints.removeLast();
@@ -50,6 +51,10 @@ class Peer {
     return t != null &&
         DateTime.now().difference(t) < const Duration(minutes: 15);
   }
+
+  /// A camera gateway (`gundil-gateway` on a router or server): it passes
+  /// camera connections through, but can't be called.
+  bool get isGateway => platform == 'gundil-gateway';
 
   /// LAN subnets it shares cameras on over the internet ("192.168.1.0/24").
   List<String> sharesSubnets = const [];

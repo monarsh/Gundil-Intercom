@@ -54,3 +54,5 @@ app.*.map.json
 *.jks
 *.keystore
 key.properties
+/gateway/gundil-gateway
+/gateway/dist/

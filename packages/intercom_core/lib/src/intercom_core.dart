@@ -818,7 +818,8 @@ class IntercomCore {
       out.add(PeerEntry(saved: s, live: live));
     }
     for (final p in _peers.values) {
-      if (!shown.contains(p.id)) out.add(PeerEntry(live: p));
+      // Gateways only pass camera connections through: not in the list.
+      if (!shown.contains(p.id) && !p.isGateway) out.add(PeerEntry(live: p));
     }
     out.sort((a, b) {
       if (a.online != b.online) return a.online ? -1 : 1;
@@ -827,7 +828,11 @@ class IntercomCore {
     return out;
   }
 
-  List<Peer> get onlinePeers => _peers.values.where((p) => p.online).toList();
+  /// Every known peer, gateways included.
+  List<Peer> get peers => _peers.values.toList();
+
+  List<Peer> get onlinePeers =>
+      _peers.values.where((p) => p.online && !p.isGateway).toList();
 
   /// Name to show for a peer: the user's label if saved, else its own name.
   String displayName(String peerId) {
@@ -2325,7 +2330,12 @@ class IntercomCore {
     // Every intercom we've seen stays in the list (until the user removes
     // it), so it survives a restart and is retried by address even where
     // discovery doesn't reach.
+    // Known only over the internet (no LAN address), or a gateway: found
+    // again through the relays, nothing to save.
     if (!_cameras.containsKey(p.id) &&
+        !p.isGateway &&
+        p.port > 0 &&
+        p.address.address != '0.0.0.0' &&
         !_saved.any(
           (s) =>
               s.peerId == p.id ||
@@ -2548,12 +2558,20 @@ class IntercomCore {
       }
       if (_helloPending.remove(c)) c.send(_hello());
       c.remoteId = id;
+      // Over the internet the address is a public one, of the NAT: keep the
+      // LAN address we know (if any).
+      final internet = c.route == 'internet';
+      final known = _peers[id];
       final p = _upsertPeer(
         id: id,
         name: (m['name'] as String?) ?? 'Unknown',
         platform: (m['platform'] as String?) ?? '?',
-        address: c.remoteAddress,
-        port: (m['port'] as int?) ?? defaultTcpPort,
+        address: internet
+            ? (known?.address ?? InternetAddress.anyIPv4)
+            : c.remoteAddress,
+        port: internet
+            ? (known?.port ?? 0)
+            : (m['port'] as int?) ?? defaultTcpPort,
       );
       // The newest link wins: after a network switch the peer dials us
       // again while the old link may still look open here (it's dead, and

@@ -255,7 +255,8 @@ class UdpTransport implements LinkTransport, DatagramChannel {
   DateTime _lastHeard = DateTime.now();
 
   /// A link that hears nothing at all for this long is gone.
-  static const Duration silenceTimeout = Duration(seconds: 20);
+  /// (Idle links are pinged every 30 s at most; see the battery saving.)
+  static const Duration silenceTimeout = Duration(seconds: 100);
 
   String get debugState =>
       'closed=$_closed inFlight=${_inFlight.length} '
