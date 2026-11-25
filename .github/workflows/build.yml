@@ -30,7 +30,33 @@ jobs:
       - run: (cd packages/intercom_audio && flutter pub get)
       - run: flutter analyze
       - run: flutter test
+      # Go: for the app ↔ gateway interop test in the engine tests.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
       - run: (cd packages/intercom_core && dart test)
+
+  gateway:
+    # gundil-gateway: the camera gateway for OpenWrt, Linux and Windows.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - run: (cd gateway && go vet ./... && GOOS=windows go vet ./... && go test ./...)
+      - name: Build the packages
+        run: |
+          TAG="${{ inputs.release || github.ref_name }}"
+          case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
+          gateway/packaging/build.sh "$V"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gundil-gateway
+          path: gateway/dist/*
 
   linux:
     needs: test
@@ -293,7 +319,7 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.release != '')
-    needs: [linux, linux-arm64, windows, android, node, ios, macos]
+    needs: [linux, linux-arm64, windows, android, node, ios, macos, gateway]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -323,6 +349,7 @@ jobs:
           cp "$A/gundil-intercom-node-linux-arm64/gundil-intercom-node-linux-arm64.tar.gz" "dist/gundil-intercom-node-$V-linux-arm64.tar.gz"
           cp "$A/gundil-intercom-ios/gundil-intercom-ios-unsigned.ipa" "dist/Gundil_Intercom-$V-ios-unsigned.ipa"
           cp "$A/gundil-intercom-macos/gundil-intercom-macos.zip" "dist/Gundil_Intercom-$V-macos.zip"
+          cp "$A"/gundil-gateway/gundil-gateway-* dist/
           chmod +x dist/*.AppImage
           (cd dist && sha256sum * > SHA256SUMS.txt)
           # "What's new" for this tag (optional), then the general notes.

@@ -1,0 +1,38 @@
+#!/bin/sh /etc/rc.common
+# Gundil Intercom gateway: cameras on this LAN reachable from the Gundil
+# apps over the internet. Settings: /etc/config/gundil (uci).
+
+START=95
+STOP=10
+USE_PROCD=1
+
+start_service() {
+	config_load gundil
+	local password name share relays
+	config_get password main password ''
+	config_get name main name 'Home router'
+	config_get_bool share main share_cameras 0
+	config_get relays main relays ''
+	if [ ${#password} -lt 10 ]; then
+		logger -t gundil-gateway "not started: set the intercom password (10+ characters): uci set gundil.main.password='...'; uci commit gundil"
+		return 1
+	fi
+	mkdir -p /var/etc
+	umask 077
+	{
+		echo "password = $password"
+		echo "name = $name"
+		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
+		[ -n "$relays" ] && echo "relays = $relays"
+	} > /var/etc/gundil-gateway.conf
+	procd_open_instance
+	procd_set_param command /usr/bin/gundil-gateway --config=/var/etc/gundil-gateway.conf
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger gundil
+}

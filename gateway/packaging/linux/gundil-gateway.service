@@ -1,0 +1,17 @@
+[Unit]
+Description=Gundil Intercom gateway (cameras over the internet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gundil-gateway
+ExecStart=/usr/local/bin/gundil-gateway --config=/etc/gundil-gateway.conf
+Restart=on-failure
+RestartSec=5
+StateDirectory=gundil-gateway
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

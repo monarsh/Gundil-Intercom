@@ -153,6 +153,76 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   its IP/port, or remove it. If a saved device gets a new
   IP, the saved address updates itself once the device is seen again.
 
+## Internet calls (outside home, no VPN)
+
+Turn on **⚙ Settings → Internet calls (STUN + UDP hole punching)** on every
+intercom (same intercom password, at least 10 characters). Then the
+intercoms find each other from anywhere, also on mobile data:
+
+- **Finding each other:** each intercom announces itself on 5 public
+  [Nostr](https://nostr.com) relays at once (`relay.damus.io`, `nos.lol`,
+  `relay.primal.net`, `nostr.mom`, `relay.nostr.band`). The announcements
+  are encrypted with a key from the password (scrypt), so the relays only
+  see random keys, a hash and ciphertext.
+- **Connecting:** when you call, the two intercoms ask public STUN servers
+  (Google, Cloudflare) for their public address, exchange them through the
+  relays (encrypted), and punch a hole through both NATs with UDP. The call
+  then goes **directly** between the two devices, end-to-end encrypted like
+  on the LAN, with 64 kbit/s audio (IMA ADPCM) instead of 256.
+- **On the LAN or a VPN** the direct connection is still used first.
+- **What it needs:** NATs that keep one public port per socket ("cone",
+  most home routers and many carriers, CGNAT included). **⚙ Settings → Check
+  network** shows yours. Between two *symmetric* NATs a direct path isn't
+  possible and the app says so; there's no relay server.
+- **Battery:** while idle only the relay connections stay open; the direct
+  link is made when a call starts and closed a minute after it ends.
+- Peers seen only over the internet show **🌐**, and so do calls over it.
+- The headless node: `internet = true` in its config.
+
+### Cameras from outside (gateway)
+
+Cameras can't punch holes themselves, so a device at home on the cameras'
+LAN passes their connections through (picture, listen, talk, pan & tilt,
+reboot), end-to-end encrypted:
+
+- an intercom (the app on a PC, or the Pi node with `share-cameras = true`)
+  with **⚙ Settings → Share home cameras over the internet** on, or
+- **`gundil-gateway`**: a small program (one file, about 7 MB) for an
+  **OpenWrt router**, a Raspberry Pi / Orange Pi, a Linux server or a
+  Windows PC (as a service), when no intercom runs at home all the time.
+
+Away from home, a camera that doesn't answer directly is reached through the
+gateway (its line in the list says *via …* 🌐); back home it's direct again.
+The gateway only forwards to devices on its own LAN (its private /24
+networks), never to the internet or to itself.
+
+**OpenWrt** (e.g. a router with an ARM 64-bit CPU, `…-openwrt-aarch64.ipk`):
+
+```sh
+scp gundil-gateway-*-openwrt-aarch64.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1
+opkg install /tmp/gundil-gateway-*-openwrt-aarch64.ipk
+uci set gundil.main.password='your intercom password'
+uci set gundil.main.share_cameras=1
+uci commit gundil
+/etc/init.d/gundil-gateway start
+gundil-gateway --check --config=/var/etc/gundil-gateway.conf
+logread -e gundil
+```
+
+**Raspberry Pi / Orange Pi / Linux PC:** `tar xzf gundil-gateway-*-linux-*.tar.gz`,
+`cd` into it, `sudo ./install.sh`, set `password` in `/etc/gundil-gateway.conf`,
+`sudo systemctl start gundil-gateway`. Log: `journalctl -u gundil-gateway -f`.
+
+**Windows:** unzip, run `gundil-gateway.exe install` in an Administrator
+prompt (it writes `C:\ProgramData\Gundil\gateway.conf`), set the password
+there, run `install` again. It runs as the *GundilGateway* service, starts
+with Windows, and logs to the Event Viewer. `gundil-gateway.exe uninstall`
+removes it.
+
+`gundil-gateway --check` shows the relays, the NAT type and the LAN it
+shares; `check_hosts = 192.168.1.50:554` in the config also tries a camera.
+
 ## Orange Pi PC / Raspberry Pi (headless node)
 
 Small Linux boards with a microphone and a speaker can be intercom stations
