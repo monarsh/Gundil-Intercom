@@ -1,0 +1,14 @@
+{
+	"admin/services/gundil-gateway": {
+		"title": "Gundil gateway",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "gundil-gateway"
+		},
+		"depends": {
+			"acl": [ "luci-app-gundil-gateway" ],
+			"uci": { "gundil": true }
+		}
+	}
+}

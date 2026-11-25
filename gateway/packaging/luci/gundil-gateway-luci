@@ -1,0 +1,52 @@
+#!/bin/sh
+# Helper for the LuCI page (luci-app-gundil-gateway): status, check, log, restart.
+
+conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
+	. /lib/functions.sh
+	config_load gundil
+	local password name share relays
+	config_get password main password ''
+	config_get name main name 'Home router'
+	config_get_bool share main share_cameras 0
+	config_get relays main relays ''
+	[ ${#password} -ge 10 ] || return 1
+	umask 077
+	{
+		echo "password = $password"
+		echo "name = $name"
+		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
+		[ -n "$relays" ] && echo "relays = $relays"
+	} > "$1"
+}
+
+case "$1" in
+status)
+	echo "version=$(/usr/bin/gundil-gateway --version 2>/dev/null)"
+	/etc/init.d/gundil-gateway enabled && echo enabled=1 || echo enabled=0
+	pid=$(ubus call service list '{"name":"gundil-gateway"}' 2>/dev/null |
+		jsonfilter -e '@["gundil-gateway"].instances.*.pid' 2>/dev/null | head -n1)
+	echo "pid=$pid"
+	pw=$(uci -q get gundil.main.password)
+	[ ${#pw} -ge 10 ] && echo password=1 || echo password=0
+	;;
+check)
+	f=/tmp/gundil-gateway-check.conf
+	if ! conf_from_uci "$f"; then
+		echo "Set the intercom password (10+ characters) and press Save & Apply first."
+		exit 1
+	fi
+	/usr/bin/gundil-gateway --check --config="$f" 2>&1
+	rm -f "$f"
+	;;
+log)
+	logread -e gundil-gateway 2>/dev/null | tail -n 200
+	;;
+restart)
+	/etc/init.d/gundil-gateway enable
+	/etc/init.d/gundil-gateway restart 2>&1
+	;;
+*)
+	echo "usage: $0 status|check|log|restart" >&2
+	exit 2
+	;;
+esac

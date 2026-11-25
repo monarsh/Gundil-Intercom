@@ -1,0 +1,14 @@
+{
+	"luci-app-gundil-gateway": {
+		"description": "Grant access to the Gundil Intercom gateway settings",
+		"read": {
+			"file": {
+				"/usr/libexec/gundil-gateway-luci": [ "exec" ]
+			},
+			"uci": [ "gundil" ]
+		},
+		"write": {
+			"uci": [ "gundil" ]
+		}
+	}
+}

@@ -210,6 +210,18 @@ gundil-gateway --check --config=/var/etc/gundil-gateway.conf
 logread -e gundil
 ```
 
+**Web page (LuCI):** also install `gundil-gateway-*-openwrt-luci.ipk` (the
+same file for every router) and open **Services → Gundil gateway** in the
+router's web interface. Set the intercom password, tick **Share home
+cameras**, press **Save & Apply**. The page shows whether the gateway runs,
+and has **Check network**, **Show log** and **Restart** buttons, so no SSH
+is needed after installing:
+
+```sh
+scp gundil-gateway-*-openwrt-aarch64.ipk gundil-gateway-*-openwrt-luci.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'opkg install /tmp/gundil-gateway-*.ipk'
+```
+
 **Raspberry Pi / Orange Pi / Linux PC:** `tar xzf gundil-gateway-*-linux-*.tar.gz`,
 `cd` into it, `sudo ./install.sh`, set `password` in `/etc/gundil-gateway.conf`,
 `sudo systemctl start gundil-gateway`. Log: `journalctl -u gundil-gateway -f`.
