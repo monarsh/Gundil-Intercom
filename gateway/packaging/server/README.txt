@@ -35,7 +35,7 @@ Then
 ----
 1. Server tab: copy the server code (GUNDIL-UPDATE-...). Put it into the
    GitHub repository variable GUNDIL_UPDATE_SERVER so every build has it, or
-   paste it in each app: Settings > Updates > Update server.
+   paste it in each app: More (the ⋮ menu) > Updates > Update server.
 2. Versions tab: add releases from GitHub (optionally keep copies here).
    Each shows "signed" or "not signed": apps built with the release key
    install only signed releases. Uploading files by hand? Upload the

@@ -303,18 +303,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     onChanged: (v) => setLocal(() => autostart = v),
                   ),
                 ],
-                if (widget.updater != null)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.system_update_outlined),
-                    title: const Text('Updates'),
-                    subtitle: Text(updateSummary(widget.updater!)),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      await showUpdatesDialog(ctx, widget.updater!);
-                      setLocal(() {});
-                    },
-                  ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Answer automatically'),
@@ -700,6 +688,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     tooltip: 'More',
                     onSelected: (action) => action(),
                     itemBuilder: (context) => [
+                      if (widget.updater != null) ...[
+                        PopupMenuItem(
+                          value: () =>
+                              showUpdatesDialog(context, widget.updater!),
+                          child: ListTile(
+                            leading: const Icon(Icons.system_update_outlined),
+                            title: const Text('Updates'),
+                            subtitle: Text(updateSummary(widget.updater!)),
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                      ],
                       PopupMenuItem(
                         value: () => BackupDialogs.export(context, service),
                         child: const ListTile(

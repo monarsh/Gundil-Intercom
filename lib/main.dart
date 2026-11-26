@@ -98,7 +98,7 @@ Future<void> main() async {
       settings.micVolume = service.micVolume;
     }
   });
-  // Self-update from the update server (Settings → Updates).
+  // Self-update from the update server (More → Updates).
   final updater = await AppUpdater.create(settings, service);
   updater.manager.start();
   runApp(IntercomApp(service: service, settings: settings, updater: updater));

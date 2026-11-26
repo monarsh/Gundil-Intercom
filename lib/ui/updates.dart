@@ -4,7 +4,7 @@ import 'package:intercom_core/intercom_core.dart';
 
 import '../src/app_updater.dart';
 
-/// Settings → Updates: status, Check now, Install, and the update server.
+/// More (⋮) → Updates: status, Check now, Install, and the update server.
 Future<void> showUpdatesDialog(BuildContext context, AppUpdater u) {
   return showDialog<void>(
     context: context,

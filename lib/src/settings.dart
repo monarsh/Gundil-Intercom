@@ -95,7 +95,7 @@ class Settings {
   String get homeKey => _prefs.getString('${_p}homeKey') ?? '';
   set homeKey(String v) => _prefs.setString('${_p}homeKey', v);
 
-  /// Self-update: on unless turned off in Settings → Updates.
+  /// Self-update: on unless turned off in More → Updates.
   bool get updatesEnabled => _prefs.getBool('${_p}updatesEnabled') ?? true;
   set updatesEnabled(bool v) => _prefs.setBool('${_p}updatesEnabled', v);
 

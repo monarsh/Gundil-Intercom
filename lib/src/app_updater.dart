@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -11,6 +12,10 @@ import 'settings.dart';
 /// platform installs a new version (see UpdateManager in intercom_core).
 class AppUpdater {
   AppUpdater._(this.manager, this.settings);
+
+  /// Tests: an updater around [manager] (no platform installer).
+  @visibleForTesting
+  AppUpdater.forTest(this.manager, this.settings);
 
   final UpdateManager manager;
   final Settings settings;
@@ -95,7 +100,7 @@ class AppUpdater {
     _ => _AndroidInstaller(),
   };
 
-  /// Applies a change of Settings → Updates.
+  /// Applies a change made in More → Updates.
   void settingsChanged() {
     manager.serverCode = settings.updatesEnabled ? codeFor(settings) : '';
   }

@@ -81,7 +81,7 @@ return view.extend({
 		};
 
 		o = s.option(form.DummyValue, '_code', _('Server code'),
-			_('The apps trust only this server. Put it into the GitHub repository variable GUNDIL_UPDATE_SERVER (built into every release), or paste it in an app: Settings → Updates → Update server.'));
+			_('The apps trust only this server. Put it into the GitHub repository variable GUNDIL_UPDATE_SERVER (built into every release), or paste it in an app: ⋮ More → Updates → Update server.'));
 		o.rawhtml = true;
 		o.cfgvalue = function() {
 			if (!status.code)

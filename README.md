@@ -412,14 +412,14 @@ admin page (TCP 8780).
 **The apps** trust only the server whose code they have. Put the server code
 (Server tab) into the GitHub repository variable `GUNDIL_UPDATE_SERVER`
 (Settings → Secrets and variables → Actions → Variables): every build is then
-made with it. Or paste it in an app: **Settings → Updates → Update server**.
-Devices check in a minute after start and every 6 hours (Settings → Updates
+made with it. Or paste it in an app: **⋮ More → Updates → Update server**.
+Devices check in a minute after start and every 6 hours (⋮ More → Updates
 → Check now to ask at once). Every file is checked against the SHA-256 the
 server sends over the encrypted link; files come from the server when it
 keeps a copy, otherwise (or when that fails) from the GitHub release.
 
 **Other update servers.** Anyone can run their own server and paste its code
-into their apps (Settings → Updates → Update server; the gateway's
+into their apps (⋮ More → Updates → Update server; the gateway's
 `update_server`, the node's `update-server`); clearing it goes back to the
 built-in one.
 
