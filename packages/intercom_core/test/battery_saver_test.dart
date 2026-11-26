@@ -6,22 +6,26 @@ import 'package:intercom_core/intercom_core.dart';
 import 'package:test/test.dart';
 
 class _Hooks extends PlatformHooks {
-  _Hooks(this.kind);
+  _Hooks(this.kind, {this.low = false});
   final NetworkKind kind;
+  final bool low;
   @override
   Future<NetworkKind> networkKind() async => kind;
+  @override
+  Future<bool> lowPowerMode() async => low;
 }
 
-IntercomCore _node(String id, NetworkKind kind) => IntercomCore(
-  selfId: id,
-  name: id,
-  audio: FakeAudioEngine(),
-  preferredPort: 0,
-  enableDiscovery: false,
-  rogerBeep: false,
-  echoSuppression: false,
-  hooks: _Hooks(kind),
-);
+IntercomCore _node(String id, NetworkKind kind, {bool low = false}) =>
+    IntercomCore(
+      selfId: id,
+      name: id,
+      audio: FakeAudioEngine(),
+      preferredPort: 0,
+      enableDiscovery: false,
+      rogerBeep: false,
+      echoSuppression: false,
+      hooks: _Hooks(kind, low: low),
+    );
 
 /// Forwards a TCP connection and counts what goes through.
 class _Counter {
@@ -120,6 +124,29 @@ void main() {
   test('on Wi-Fi, also quiet for more than 5 s', () async {
     expect(await _idleTraffic(NetworkKind.wifi), 0);
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('low power mode uses the mobile pace, also on Wi-Fi', () async {
+    DebugLog.instance.clear();
+    final phone = _node('phone', NetworkKind.wifi, low: true);
+    await phone.start();
+    addTearDown(phone.shutdown);
+    expect(phone.networkKind, NetworkKind.wifi);
+    expect(phone.lowPower, isTrue);
+    String last() => DebugLog.instance.entries
+        .map((e) => e.toString())
+        .lastWhere((l) => l.contains('battery'), orElse: () => '');
+    expect(last(), contains('low power mode'));
+    expect(last(), contains('keep-alive every 30 s'));
+    phone.setLowPower(false);
+    expect(phone.lowPower, isFalse);
+    expect(last(), contains('keep-alive every 15 s'));
+    // Without a known network (desktop) it changes nothing.
+    final pc = _node('pc', NetworkKind.unknown);
+    await pc.start();
+    addTearDown(pc.shutdown);
+    pc.setLowPower(true);
+    expect(last(), contains('no battery saving'));
+  });
 
   test('a slower announcer stays online between its beacons', () {
     final b = Discovery.parseBeacon(

@@ -1,10 +1,14 @@
 import 'dart:io';
 
+import 'window_bridge.dart';
+
 /// "Start automatically when I sign in" support.
 ///
 /// * Windows: a value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 ///   (the same entry the installer's "start automatically" option creates).
 /// * Linux: an XDG autostart entry in `~/.config/autostart`.
+/// * macOS 13+: a login item (SMAppService, in MainFlutterWindow.swift);
+///   launched at login it starts hidden in the menu bar.
 ///
 /// The app is launched with `--minimized`, so it starts quietly in the
 /// taskbar and still plays incoming talk.
@@ -16,9 +20,11 @@ class Autostart {
       r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
   static const String minimizedFlag = '--minimized';
 
-  static bool get supported => Platform.isWindows || Platform.isLinux;
+  static bool get supported =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   static Future<bool> isEnabled() async {
+    if (Platform.isMacOS) return await WindowBridge.getLoginItem() ?? false;
     try {
       if (Platform.isWindows) {
         final r = await Process.run('reg', ['query', _runKey, '/v', _name]);
@@ -31,6 +37,9 @@ class Autostart {
 
   /// Turns autostart on or off. Returns the resulting state.
   static Future<bool> setEnabled(bool enabled) async {
+    if (Platform.isMacOS) {
+      return await WindowBridge.setLoginItem(enabled) ?? false;
+    }
     // Inside an AppImage the executable lives in a temporary mount that
     // changes every launch; $APPIMAGE is the real file to start.
     final exe = Platform.environment['APPIMAGE'] ?? Platform.resolvedExecutable;

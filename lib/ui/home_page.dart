@@ -248,7 +248,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           : 'Start automatically at login',
                     ),
                     subtitle: Text(
-                      trayAvailable
+                      Platform.isMacOS
+                          ? 'Starts in the menu bar when you log in, ready '
+                                'to receive (macOS 13 or later).'
+                          : trayAvailable
                           ? 'Starts in the system tray when you sign in, '
                                 'ready to receive.'
                           : 'Opens minimized when you log in, ready to '
@@ -282,9 +285,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 if (trayAvailable)
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Minimize to tray'),
+                    title: Text(
+                      Platform.isMacOS
+                          ? 'Keep running in the menu bar'
+                          : 'Minimize to tray',
+                    ),
                     subtitle: Text(
-                      Platform.isWindows
+                      Platform.isMacOS
+                          ? 'Minimize and the close button hide the window '
+                                'to the menu bar, and it keeps receiving. '
+                                'Click the menu bar icon to open it, or Quit.'
+                          : Platform.isWindows
                           ? 'Minimize and the close button keep it running in '
                                 'the notification area. Right-click the tray '
                                 'icon > Exit to quit.'
@@ -454,8 +465,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final now = await Autostart.setEnabled(autostart);
         if (now != autostart && mounted) {
           _messenger.currentState?.showSnackBar(
-            const SnackBar(
-              content: Text('Could not change the autostart setting'),
+            SnackBar(
+              content: Text(
+                Platform.isMacOS
+                    ? 'Could not change the login item. It needs macOS 13 '
+                          'or later; check System Settings > General > '
+                          'Login Items.'
+                    : 'Could not change the autostart setting',
+              ),
             ),
           );
         }

@@ -54,6 +54,12 @@ Future<void> main() async {
     shareCameras: settings.shareCameras,
   );
   await service.start();
+  // iPhone: Wi-Fi / mobile data and Low Power Mode set the idle battery
+  // saving; iOS tells us when either changes.
+  PlatformBridge.onPowerOrNetworkChanged(() async {
+    service.setNetworkKind(await PlatformBridge.networkKind());
+    service.setLowPower(await PlatformBridge.lowPowerMode());
+  });
   // iPhone: the audio engine set up its audio session just now; background
   // mode puts back "mix with other apps" on top of it.
   if (Platform.isIOS && await PlatformBridge.getBackground()) {
@@ -122,8 +128,9 @@ class IntercomApp extends StatelessWidget {
 }
 
 /// Keeps people informed when they aren't looking at the app:
-/// * Windows: tray tooltip ("Gate is speaking") and a notification when a
-///   line opens or someone rings while the window is hidden;
+/// * Windows, Linux, macOS: tray / menu bar tooltip ("Gate is speaking")
+///   and a notification when a line opens or someone rings while the
+///   window is hidden;
 /// * Android: the background-mode notification ("Connected with Gate").
 void _mirrorStatusOutsideApp(IntercomService service) {
   String? lastTooltip;

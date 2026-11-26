@@ -80,6 +80,10 @@ class PlatformHooks {
   /// Wi-Fi or mobile data (phones); [NetworkKind.unknown]: no saving.
   Future<NetworkKind> networkKind() async => NetworkKind.unknown;
 
+  /// Whether the phone's power saver is on (iOS Low Power Mode): the idle
+  /// pace then follows mobile data. False elsewhere.
+  Future<bool> lowPowerMode() async => false;
+
   /// Asks for microphone permission. Returns true when allowed.
   Future<bool> requestMicrophone() async => true;
 
@@ -433,9 +437,7 @@ class IntercomCore {
       },
     );
     _internet = svc;
-    svc.refreshEvery = _netKind == NetworkKind.mobile
-        ? const Duration(minutes: 10)
-        : const Duration(minutes: 5);
+    svc.refreshEvery = _refreshEvery;
     try {
       await svc.start();
     } catch (e) {
@@ -586,7 +588,7 @@ class IntercomCore {
 
   /// The keep-alive interval for [c]: ours, or longer if the peer asked.
   Duration _pingEvery(PeerConnection c) {
-    var d = _idle ? idlePing(_netKind) : linkPingInterval;
+    var d = _idle ? idlePing(_paceKind) : linkPingInterval;
     final asked = c.peerPingEvery;
     if (asked != null && asked > d) d = asked;
     return d;
@@ -599,11 +601,39 @@ class IntercomCore {
   void setNetworkKind(NetworkKind k) {
     if (k == _netKind) return;
     _netKind = k;
-    _internet?.refreshEvery = k == NetworkKind.mobile
-        ? const Duration(minutes: 10)
-        : const Duration(minutes: 5);
+    _paceChanged();
+  }
+
+  bool _lowPower = false;
+
+  /// The phone's own power saver (iOS Low Power Mode) is on.
+  bool get lowPower => _lowPower;
+
+  /// Sets the phone's power saver state: while on, idle links, retries,
+  /// camera checks and internet presence use the mobile-data pace, also on
+  /// Wi-Fi (LAN announcements stay as on Wi-Fi, so this intercom can still
+  /// be found). Calls start and ring as fast as ever.
+  void setLowPower(bool on) {
+    if (on == _lowPower) return;
+    _lowPower = on;
+    _paceChanged();
+  }
+
+  /// The network whose idle pace applies: mobile data while the phone's
+  /// power saver is on (when it is on a known network).
+  NetworkKind get _paceKind => _lowPower && _netKind != NetworkKind.unknown
+      ? NetworkKind.mobile
+      : _netKind;
+
+  Duration get _refreshEvery => _paceKind == NetworkKind.mobile
+      ? const Duration(minutes: 10)
+      : const Duration(minutes: 5);
+
+  void _paceChanged() {
+    final k = _netKind;
+    _internet?.refreshEvery = _refreshEvery;
     log(
-      'On ${k.name}: ${k == NetworkKind.unknown ? 'no battery saving' : 'saving battery while idle (keep-alive every ${idlePing(k).inSeconds} s)'}',
+      'On ${k.name}${_lowPower ? ' (low power mode)' : ''}: ${k == NetworkKind.unknown ? 'no battery saving' : 'saving battery while idle (keep-alive every ${idlePing(_paceKind).inSeconds} s)'}',
     );
     _applyAnnounce();
     for (final c in _links.values.toSet()) {
@@ -1185,7 +1215,11 @@ class IntercomCore {
       _localAddresses = addresses;
       try {
         final kind = await hooks.networkKind();
-        if (!_shutDown) setNetworkKind(kind);
+        final low = await hooks.lowPowerMode();
+        if (!_shutDown) {
+          _lowPower = low;
+          setNetworkKind(kind);
+        }
       } catch (_) {}
       await _updateSharedSubnets();
       if (!first && !_shutDown) networkChanged();
@@ -1963,7 +1997,7 @@ class IntercomCore {
         // A little early, so a 30 s interval lands on every third tick.
         if (last != null &&
             now.difference(last) <
-                (_idle ? idleCameraCheck(_netKind) : cameraOnlineCheck) -
+                (_idle ? idleCameraCheck(_paceKind) : cameraOnlineCheck) -
                     const Duration(seconds: 2)) {
           continue;
         }
@@ -2442,7 +2476,7 @@ class IntercomCore {
   void _retrySavedDue() {
     final now = DateTime.now();
     final every = _idle
-        ? idleRetry(_netKind, reconnectInterval)
+        ? idleRetry(_paceKind, reconnectInterval)
         : reconnectInterval;
     final last = _lastRetry;
     // A little early, so the interval lands on a tick of the timer.
@@ -2656,8 +2690,8 @@ class IntercomCore {
     'groups': {for (final g in _groups.values) g.id: g.updated},
     // Battery saving: ping us this rarely while idle (older versions
     // ignore it and keep pinging every 5 s, which still works).
-    if (idlePing(_netKind) != linkPingInterval)
-      'ping': idlePing(_netKind).inSeconds,
+    if (idlePing(_paceKind) != linkPingInterval)
+      'ping': idlePing(_paceKind).inSeconds,
   });
 
   /// Incoming connections whose HELLO we haven't answered yet.

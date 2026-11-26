@@ -499,6 +499,25 @@ Without a tray, nothing changes: the window minimizes to the taskbar, the
 tray disappears while the window is hidden (panel restarted, extension
 turned off), the window comes back by itself.
 
+### Mac menu bar
+
+On macOS the intercom has a menu bar icon (top right of the screen):
+
+- **Close** or **minimize**: the window hides to the menu bar, its Dock icon
+  goes away, and the intercom keeps receiving.
+- **Click** the menu bar icon for its menu: the status line (e.g. "Gundil
+  Intercom — Gate is speaking"), **Open Gundil Intercom** and **Quit**.
+- Opening the app again (Finder, Launchpad, Spotlight) shows the running
+  window.
+- A notification appears when a line opens or someone rings while the window
+  is hidden; click it to open the window. macOS asks once whether to allow
+  notifications.
+- App Nap is off while it runs, so talk plays at once with the window hidden.
+  The Mac can still sleep; while it sleeps nothing is received.
+
+To have the close button quit the app instead, turn off **Settings → Keep
+running in the menu bar**. **Cmd+Q** always quits.
+
 ### Start automatically
 
 - **Windows**: tick *"Start Gundil Intercom automatically when I sign in"* in
@@ -509,6 +528,9 @@ turned off), the window comes back by itself.
 - **Linux**: **Settings → Start automatically at login** creates
   `~/.config/autostart/gundil-intercom.desktop`. It starts hidden in the
   tray (or minimized when the desktop has no tray).
+- **macOS 13 or later**: **Settings → Start automatically at login** adds the
+  app to *System Settings → General → Login Items*. It starts hidden in the
+  menu bar.
 - **Android**: see *Background mode on Android* below.
 - **iPhone**: see *Background mode on iPhone* below.
 
@@ -585,7 +607,12 @@ background**.
 - **Interruptions:** after a phone call, Siri or an alarm, it starts again by
   itself.
 - **Battery:** it costs some battery, because the iPhone never fully sleeps
-  while it's on.
+  while it's on. To cost as little as possible, while no call is on it uses
+  the same idle pace as Android (see the table above): Wi-Fi or mobile data
+  is detected by itself. With **Low Power Mode** on (Settings → Battery) it
+  uses the mobile-data pace on Wi-Fi too. Calls ring just as fast. The
+  debug log shows the pace, e.g. "On wifi (low power mode): saving battery
+  while idle (keep-alive every 30 s)".
 - **When it stops:** iOS can still close the app when it runs short of memory,
   or when you swipe it away in the app switcher. Open it once to start again;
   the setting is remembered.

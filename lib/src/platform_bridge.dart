@@ -4,8 +4,9 @@ import 'package:flutter/services.dart';
 
 import 'package:intercom_core/intercom_core.dart';
 
-/// Thin bridge to Android-only platform features implemented in
-/// `MainActivity.kt`. Every call is a no-op on desktop platforms.
+/// Thin bridge to phone platform features implemented in `GundilApp.kt`
+/// (Android) and `AppDelegate.swift` (iPhone). Every call is a no-op on
+/// desktop platforms.
 class PlatformBridge {
   static const MethodChannel _channel = MethodChannel('p2p_intercom/platform');
 
@@ -51,17 +52,34 @@ class PlatformBridge {
   static Future<Map<Object?, Object?>?> setAudioRoute(String id) =>
       _map('setAudioRoute', {'id': id});
 
+  /// Calls from the native side, by method name (one channel handler).
+  static final Map<String, void Function(Object? args)> _incoming = {};
+
+  static void _listen(String method, void Function(Object? args) handler) {
+    if (_incoming.isEmpty) {
+      _channel.setMethodCallHandler((call) async {
+        _incoming[call.method]?.call(call.arguments);
+        return null;
+      });
+    }
+    _incoming[method] = handler;
+  }
+
   /// Called by Android whenever outputs or the current output change.
   static void onAudioRoutesChanged(
     void Function(Map<Object?, Object?> state) handler,
   ) {
     if (!_android) return;
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'audioRoutesChanged' && call.arguments is Map) {
-        handler(call.arguments as Map<Object?, Object?>);
-      }
-      return null;
+    _listen('audioRoutesChanged', (args) {
+      if (args is Map) handler(args);
     });
+  }
+
+  /// Called by iOS when it switches between Wi-Fi and mobile data, or Low
+  /// Power Mode is turned on or off (AppDelegate.swift).
+  static void onPowerOrNetworkChanged(void Function() handler) {
+    if (!Platform.isIOS) return;
+    _listen('powerOrNetworkChanged', (_) => handler());
   }
 
   static Future<Map<Object?, Object?>?> _map(
@@ -83,10 +101,10 @@ class PlatformBridge {
   static Future<void> setStatus(String title, String text) =>
       _invoke('setStatus', {'title': title, 'text': text});
 
-  /// Android: whether the phone is on Wi-Fi or mobile data (a VPN counts
-  /// as what it runs over). [NetworkKind.unknown] elsewhere.
+  /// Android and iPhone: whether the phone is on Wi-Fi or mobile data (a
+  /// VPN counts as what it runs over). [NetworkKind.unknown] elsewhere.
   static Future<NetworkKind> networkKind() async {
-    if (!_android) return NetworkKind.unknown;
+    if (!_android && !Platform.isIOS) return NetworkKind.unknown;
     try {
       return switch (await _channel.invokeMethod<String>('networkKind')) {
         'wifi' => NetworkKind.wifi,
@@ -97,6 +115,18 @@ class PlatformBridge {
       return NetworkKind.unknown;
     } on MissingPluginException {
       return NetworkKind.unknown;
+    }
+  }
+
+  /// iPhone: whether Low Power Mode is on (Settings > Battery).
+  static Future<bool> lowPowerMode() async {
+    if (!Platform.isIOS) return false;
+    try {
+      return await _channel.invokeMethod<bool>('lowPowerMode') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 
@@ -189,4 +219,7 @@ class FlutterPlatformHooks extends PlatformHooks {
 
   @override
   Future<NetworkKind> networkKind() => PlatformBridge.networkKind();
+
+  @override
+  Future<bool> lowPowerMode() => PlatformBridge.lowPowerMode();
 }

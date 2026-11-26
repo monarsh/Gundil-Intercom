@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import Network
 import UIKit
 
 @main
@@ -22,8 +23,9 @@ import UIKit
 }
 
 /// The "p2p_intercom/platform" channel on iOS (lib/src/platform_bridge.dart):
-/// the microphone permission, call audio and "Run in background"; the rest
-/// is Android-only.
+/// the microphone permission, call audio, "Run in background", and Wi-Fi /
+/// mobile data and Low Power Mode for the battery saving; the rest is
+/// Android-only.
 enum GundilPlatform {
   static var channel: FlutterMethodChannel?
 
@@ -43,6 +45,10 @@ enum GundilPlatform {
         EarDetection.shared.stop()
         BackgroundKeeper.shared.callEnded()
         result(nil)
+      case "networkKind":
+        result(PowerAndNetwork.shared.kind)
+      case "lowPowerMode":
+        result(ProcessInfo.processInfo.isLowPowerModeEnabled)
       case "getBackground":
         result(BackgroundKeeper.shared.enabled)
       case "setBackground":
@@ -55,6 +61,65 @@ enum GundilPlatform {
       }
     }
     channel = ch
+    PowerAndNetwork.shared.start()
+  }
+}
+
+/// Battery saving (the engine's idle pace): whether the iPhone is on Wi-Fi
+/// or mobile data, and whether Low Power Mode is on. Tells Dart when either
+/// changes ("powerOrNetworkChanged"); it then asks "networkKind" and
+/// "lowPowerMode".
+final class PowerAndNetwork {
+  static let shared = PowerAndNetwork()
+
+  private let monitor = NWPathMonitor()
+  private var started = false
+  private var observer: NSObjectProtocol?
+  private var lastKind = "none"
+  private var lastLow = false
+
+  /// "wifi", "mobile" or "none". Wi-Fi (or Ethernet) wins when both are up,
+  /// as on Android; a VPN counts as the network it runs over.
+  private(set) var kind = "none"
+
+  func start() {
+    guard !started else { return }
+    started = true
+    lastLow = ProcessInfo.processInfo.isLowPowerModeEnabled
+    monitor.pathUpdateHandler = { [weak self] path in
+      var k = "none"
+      if path.status == .satisfied {
+        let types = path.availableInterfaces.map { $0.type }
+        if types.contains(.wifi) || types.contains(.wiredEthernet) {
+          k = "wifi"
+        } else if types.contains(.cellular) {
+          k = "mobile"
+        }
+      }
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        self.kind = k
+        if k != self.lastKind {
+          self.lastKind = k
+          self.changed()
+        }
+      }
+    }
+    monitor.start(queue: DispatchQueue(label: "gundil.network"))
+    observer = NotificationCenter.default.addObserver(
+      forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      let low = ProcessInfo.processInfo.isLowPowerModeEnabled
+      if low != self.lastLow {
+        self.lastLow = low
+        self.changed()
+      }
+    }
+  }
+
+  private func changed() {
+    GundilPlatform.channel?.invokeMethod("powerOrNetworkChanged", arguments: nil)
   }
 }
 
