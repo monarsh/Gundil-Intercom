@@ -253,3 +253,73 @@ func TestResetWebAdmin(t *testing.T) {
 		t.Fatalf("new account: %+v", a)
 	}
 }
+
+func TestExtraSubnets(t *testing.T) {
+	got, err := parseExtraSubnets([]string{"192.168.2.0/24", " 10.20.7.9/16 ", "172.16.8.0/23", "100.64.1.0/24", "192.168.5.9", ""})
+	want := []string{"192.168.2.0/24", "10.20.0.0/16", "172.16.8.0/23", "100.64.1.0/24", "192.168.5.9/32"}
+	if err != nil || strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v %v", got, err)
+	}
+	// Never the internet, never more than a private range, IPv4 only.
+	for _, bad := range []string{"8.8.8.0/24", "0.0.0.0/0", "10.0.0.0/7", "172.32.0.0/16", "192.169.0.0/16",
+		"100.128.0.0/16", "fd00::/8", "camera.lan", "192.168.2.0/40"} {
+		if _, err := parseExtraSubnets([]string{bad}); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+	for host, want := range map[string]bool{"10.20.3.4": true, "10.21.3.4": false, "192.168.2.200": true} {
+		in := inSubnet(host, "10.20.0.0/16") || inSubnet(host, "192.168.2.0/24")
+		if in != want {
+			t.Errorf("%s: %v", host, in)
+		}
+	}
+	// The gateway forwards to its own LANs and the extra ones, not to itself.
+	g := &gateway{cfg: &config{ExtraSubnets: []string{"192.168.77.0/24", "10.99.0.0/16"}}}
+	nets := g.sharedSubnets()
+	if !strings.Contains(strings.Join(nets, ","), "192.168.77.0/24") || !strings.Contains(strings.Join(nets, ","), "10.99.0.0/16") {
+		t.Fatalf("shared: %v", nets)
+	}
+	for host, want := range map[string]bool{"192.168.77.20": true, "10.99.200.1": true, "192.168.78.20": false,
+		"8.8.8.8": false, "127.0.0.1": false, "localhost": false} {
+		if got := g.mayForward(host); got != want {
+			t.Errorf("mayForward(%s) = %v", host, got)
+		}
+	}
+	_, own := localAddrs()
+	for _, a := range own {
+		if g.mayForward(a) {
+			t.Errorf("forwards to itself (%s)", a)
+		}
+	}
+	// A bad entry in the file is an error, not silently more access.
+	_, p := freshConfig(t)
+	os.WriteFile(p, []byte("home_key = "+pairingText(make([]byte, 32))+"\nextra_subnets = 1.2.3.0/24\n"), 0o600)
+	if _, err := parseConfig(p); err == nil || !strings.Contains(err.Error(), "private") {
+		t.Fatalf("public extra subnet in the file: %v", err)
+	}
+}
+
+func TestGatewayWebExtraSubnets(t *testing.T) {
+	gt := newGWTest(t)
+	gt.signIn()
+	base := map[string]any{"authMode": "home_key", "homeKey": pairingText(make([]byte, 32)), "name": "G", "shareCameras": true}
+	base["extraSubnets"] = "203.0.113.0/24"
+	if code, out := gt.do("POST", "/api/settings", base); code != 400 || !strings.Contains(out["error"].(string), "private") {
+		t.Fatalf("a public network must be refused: %d %v", code, out)
+	}
+	base["extraSubnets"] = "192.168.2.0/24, 10.20.5.0/16"
+	if code, out := gt.do("POST", "/api/settings", base); code != 200 {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	if _, s := gt.do("GET", "/api/settings", nil); s["extraSubnets"] != "192.168.2.0/24, 10.20.0.0/16" {
+		t.Fatalf("settings: %v", s)
+	}
+	b, _ := os.ReadFile(gt.cfg)
+	if !strings.Contains(string(b), "extra_subnets = 192.168.2.0/24, 10.20.0.0/16") {
+		t.Fatalf("config:\n%s", b)
+	}
+	c, err := loadConfig(gt.cfg)
+	if err != nil || len(c.ExtraSubnets) != 2 {
+		t.Fatalf("reload: %+v %v", c, err)
+	}
+}

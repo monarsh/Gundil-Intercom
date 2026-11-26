@@ -126,5 +126,17 @@ void main() {
     expect(inSubnet('192.168.50.203', '192.168.50.0/24'), isTrue);
     expect(inSubnet('192.168.51.203', '192.168.50.0/24'), isFalse);
     expect(inSubnet('camera.local', '192.168.50.0/24'), isFalse);
+    // Other subnet sizes (gateway extra_subnets).
+    expect(inSubnet('10.20.3.4', '10.20.0.0/16'), isTrue);
+    expect(inSubnet('10.21.3.4', '10.20.0.0/16'), isFalse);
+    expect(inSubnet('172.16.9.200', '172.16.8.0/23'), isTrue);
+    expect(inSubnet('172.16.10.1', '172.16.8.0/23'), isFalse);
+    expect(inSubnet('192.168.2.9', '192.168.2.9/32'), isTrue);
+    expect(inSubnet('192.168.2.9', '192.168.2.0'), isFalse);
+    expect(inSubnet('192.168.2.9', '192.168.2.0/33'), isFalse);
+    expect(
+      inSubnet('8.8.8.8', '0.0.0.0/0'),
+      isTrue,
+    ); // Only the math; gateways refuse /0.
   });
 }

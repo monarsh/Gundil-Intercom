@@ -233,7 +233,13 @@ reboot), end-to-end encrypted:
 Away from home, a camera that doesn't answer directly is reached through the
 gateway (its line in the list says *via …* 🌐); back home it's direct again.
 The gateway only forwards to devices on its own LAN (its private /24
-networks), never to the internet or to itself.
+networks), never to the internet or to itself. **Cameras on another
+network** (a camera VLAN, a routed subnet): list them as *Other networks*
+(`extra_subnets = 192.168.2.0/24, 10.20.0.0/16` in the config, the web page,
+LuCI, or `deploy-gateway.sh --subnets …`). Only private networks are
+accepted (10.x, 172.16–31.x, 192.168.x, 100.64–127.x), and the gateway
+device must be able to reach them (it routes there, or is the router). Apps
+before 1.11 understand only /24 networks there.
 
 **From your computer over SSH** (any of the devices below):
 `gateway/packaging/deploy-gateway.sh root@192.168.1.1 --home-key` finds out
@@ -241,7 +247,8 @@ whether the device runs OpenWrt (opkg or apk), Linux or Windows and its CPU,
 downloads the matching package of the **newest release** (or `--version
 X.Y.Z`, or `--package FILE`; without GitHub it uses its own version), installs it (with the LuCI page on OpenWrt), saves the
 settings you give (`--home-key` or `--password`, which it asks for,
-`--name`, `--share-cameras yes|no`, `--update-server CODE`; other settings are
+`--name`, `--share-cameras yes|no`, `--subnets "192.168.2.0/24"`,
+`--update-server CODE`; other settings are
 kept), restarts the gateway and runs the network check. Running it again
 upgrades. From the next release it is also attached to each release as
 `app-gundil-gateway-deploy.sh` (no version in its name), so this always gets
@@ -326,8 +333,8 @@ from the internet). OpenWrt keeps its LuCI page instead.
   key's fingerprint, to compare with the app), relays, NAT type, the shared
   LAN; **Check network** and **Restart**.
 - **Settings:** intercom password or home key (never shown again once
-  saved), name, camera sharing, cameras to check, relays, self-update and the
-  update server. **Save and restart** writes them into the config file
+  saved), name, camera sharing, other networks, cameras to check, relays,
+  self-update and the update server. **Save and restart** writes them into the config file
   (comments kept) and restarts the gateway in place; the page stays signed
   in.
 - **Log:** the gateway's recent log.

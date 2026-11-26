@@ -156,9 +156,9 @@ func (g *gateway) announce() {
 	now := time.Now().Unix()
 	subnets := []string{}
 	if g.share {
-		subnets, _ = localSubnets()
-		if len(g.cfg.TestSubnets) > 0 {
-			subnets = g.cfg.TestSubnets
+		subnets = g.sharedSubnets()
+		if len(subnets) > maxAnnouncedSubnets {
+			subnets = subnets[:maxAnnouncedSubnets]
 		}
 	}
 	body := map[string]any{"id": g.selfID, "name": g.cfg.Name, "platform": "gundil-gateway",
@@ -397,22 +397,8 @@ func (g *gateway) openTunnel(c *peerConn, tid uint32, host string, port int) (*t
 	if port <= 0 || port > 65535 {
 		return nil, fmt.Errorf("bad port")
 	}
-	if !g.anyHost {
-		nets, own := localAddrs()
-		ok := false
-		for _, n := range nets {
-			if inSubnet(host, n) {
-				ok = true
-			}
-		}
-		for _, a := range own {
-			if a == host {
-				ok = false
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("%s is not on the gateway's LAN", host)
-		}
+	if !g.anyHost && !g.mayForward(host) {
+		return nil, fmt.Errorf("%s is not on a network this gateway shares", host)
 	}
 	conn, err := net.DialTimeout("tcp4", net.JoinHostPort(host, strconv.Itoa(port)), 5*time.Second)
 	if err != nil {
@@ -447,17 +433,87 @@ func localAddrs() ([]string, []string) {
 	return out, own
 }
 
-func localSubnets() ([]string, error) {
-	n, _ := localAddrs()
-	return n, nil
-}
-
+// inSubnet: [host] (IPv4) is in [subnet] ("192.168.1.0/24", "10.20.0.0/16").
 func inSubnet(host, subnet string) bool {
 	ip := net.ParseIP(host).To4()
-	if ip == nil {
+	_, n, err := net.ParseCIDR(subnet)
+	return ip != nil && err == nil && n.Contains(ip)
+}
+
+// Apps read at most this many subnets from a presence (1.10 and older: 8).
+const maxAnnouncedSubnets = 32
+
+// sharedSubnets: the networks this gateway forwards to: its own LANs (as
+// /24s) and extra_subnets.
+func (g *gateway) sharedSubnets() []string {
+	if len(g.cfg.TestSubnets) > 0 {
+		return g.cfg.TestSubnets
+	}
+	own, _ := localAddrs()
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range append(own, g.cfg.ExtraSubnets...) {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// mayForward: [host] is in a shared network and is not this gateway.
+func (g *gateway) mayForward(host string) bool {
+	_, own := localAddrs()
+	for _, a := range own {
+		if a == host {
+			return false
+		}
+	}
+	if ip := net.ParseIP(host).To4(); ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
 		return false
 	}
-	return subnet == fmt.Sprintf("%d.%d.%d.0/24", ip[0], ip[1], ip[2])
+	for _, n := range g.sharedSubnets() {
+		if inSubnet(host, n) {
+			return true
+		}
+	}
+	return false
+}
+
+// privateRanges: the only places extra_subnets may be in.
+var privateRanges = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"}
+
+// parseExtraSubnets checks extra_subnets: IPv4 networks ("192.168.2.0/24";
+// a bare address is a /32) inside the private ranges, never the internet.
+func parseExtraSubnets(list []string) ([]string, error) {
+	var out []string
+	for _, s := range list {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if !strings.Contains(s, "/") {
+			s += "/32"
+		}
+		ip, n, err := net.ParseCIDR(s)
+		if err != nil || ip.To4() == nil {
+			return nil, fmt.Errorf("%s: not an IPv4 network like 192.168.2.0/24", s)
+		}
+		ones, _ := n.Mask.Size()
+		inside := false
+		for _, r := range privateRanges {
+			_, rn, _ := net.ParseCIDR(r)
+			rOnes, _ := rn.Mask.Size()
+			if rn.Contains(n.IP) && ones >= rOnes {
+				inside = true
+			}
+		}
+		if !inside {
+			return nil, fmt.Errorf("%s is not a private network (only 10.x, 172.16–31.x, 192.168.x and 100.64–127.x)", s)
+		}
+		out = append(out, n.String())
+	}
+	return out, nil
 }
 
 // checkReport: what --check prints and the web page shows.
@@ -490,7 +546,7 @@ func (g *gateway) runCheck() checkReport {
 	if pub != nil {
 		r.Public = pub.String()
 	}
-	r.Subnets, _ = localAddrs()
+	r.Subnets = g.sharedSubnets()
 	if g.cfg.Password == "" {
 		r.Key = homeFingerprint(g.cfg.HomeKey)
 	} else {

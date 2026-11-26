@@ -87,9 +87,23 @@ return view.extend({
 
 		o = s.option(form.Flag, 'share_cameras', _('Share home cameras'),
 			_('The apps outside home can reach the cameras on this LAN through this router. ' +
-			  'Only devices with the intercom password, and only addresses on this LAN.'));
+			  'Only devices with the intercom password, and only addresses on this LAN (and the other networks below).'));
 		o.default = '0';
 		o.rmempty = false;
+
+		o = s.option(form.Value, 'extra_subnets', _('Other networks'),
+			_('Optional. Cameras on other private networks this router can reach (another VLAN, a routed subnet), comma separated, e.g. 192.168.2.0/24. Its own LAN is always shared. Only 10.x, 172.16–31.x, 192.168.x and 100.64–127.x.'));
+		o.placeholder = '192.168.2.0/24, 10.20.0.0/16';
+		o.depends('share_cameras', '1');
+		o.validate = function(id, value) {
+			if (!value)
+				return true;
+			const ok = value.split(',').every(function(n) {
+				n = n.trim();
+				return n === '' || /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(n);
+			});
+			return ok ? true : _('Like 192.168.2.0/24, comma separated');
+		};
 
 		o = s.option(form.Value, 'relays', _('Nostr relays'),
 			_('Optional. Comma separated; empty uses the built-in list.'));

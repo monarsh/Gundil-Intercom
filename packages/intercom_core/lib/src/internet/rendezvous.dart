@@ -233,7 +233,7 @@ class Rendezvous {
           gone: m['gone'] == true,
           subnets: [
             if (subnets is List)
-              for (final s in subnets.take(8))
+              for (final s in subnets.take(32))
                 if (s is String) s,
           ],
         ),

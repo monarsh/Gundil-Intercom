@@ -90,7 +90,9 @@
       <label>Name <input name="name" maxlength="64" required></label>
       <p class="muted small">The name the apps show for this gateway.</p>
       <label class="check"><input type="checkbox" name="shareCameras"> Share home cameras</label>
-      <p class="muted small">The apps outside home can reach the cameras on this LAN through this gateway: only apps with the intercom password or home key, and only addresses on this LAN.</p>
+      <p class="muted small">The apps outside home can reach the cameras on this LAN through this gateway: only apps with the intercom password or home key, and only addresses on this LAN and the other networks below.</p>
+      <label>Other networks <input name="extraSubnets" placeholder="192.168.2.0/24, 10.20.0.0/16"></label>
+      <p class="muted small">Optional. Cameras on other private networks (another VLAN, a routed subnet) this device can reach, comma separated. Its own LAN is always shared. Apps before 1.11 understand only /24 networks here.</p>
       <label>Cameras to check <input name="checkHosts" placeholder="192.168.1.50:554"></label>
       <p class="muted small">Optional. Check network also tries these (address:port, comma separated).</p>
       <label>Nostr relays <input name="relays"></label>

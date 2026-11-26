@@ -30,6 +30,7 @@ type config struct {
 	WebListen    string   // Its address, e.g. 0.0.0.0:8781.
 	Path         string   // This file.
 	AnyHost      bool     // Tests only.
+	ExtraSubnets []string // Private networks to forward to besides the own LANs.
 	TestSubnets  []string // Tests only: subnets to announce.
 	ScryptN      int      // Tests only.
 }
@@ -163,6 +164,12 @@ func parseConfig(path string) (*config, error) {
 			fmt.Sscan(v, &c.UpdateDelay)
 		case "check_hosts":
 			c.CheckHosts = list()
+		case "extra_subnets":
+			n, err := parseExtraSubnets(list())
+			if err != nil {
+				return nil, fmt.Errorf("extra_subnets: %v (in %s)", err, path)
+			}
+			c.ExtraSubnets = n
 		case "test_subnets":
 			c.TestSubnets = list()
 		case "test_any_host":
@@ -284,6 +291,11 @@ name = Home gateway
 
 # Let the apps reach devices on this LAN (cameras) through this gateway.
 share_cameras = true
+
+# Optional: other private networks it may forward to as well (cameras on
+# another VLAN or a routed subnet), comma separated. This device must be
+# able to reach them. Only 10.x, 172.16-31.x, 192.168.x and 100.64-127.x.
+# extra_subnets = 192.168.2.0/24, 10.20.0.0/16
 
 # The settings web page (not on OpenWrt, which has LuCI):
 # http://<this device>:8781, only from the LAN. web = off turns it off.

@@ -15,6 +15,9 @@
 #   --password           asks for the intercom password (10+ characters)
 #   --name NAME          the name the apps show
 #   --share-cameras yes|no
+#   --subnets "192.168.2.0/24, 10.20.0.0/16"
+#                        other private networks it may forward to (cameras
+#                        on another VLAN or a routed subnet); "" clears them
 #   --update-server CODE the update server's code (GUNDIL-UPDATE-...)
 #   --no-check           don't run the network check at the end
 # The home key and password are asked for (not typed on the command line, so
@@ -36,7 +39,7 @@ CHECK=1
 SET=$(mktemp)
 trap 'rm -f "$SET"' EXIT
 
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 ask_secret() { # prompt -> value on stdout
 	printf '%s: ' "$1" >&2
 	stty -echo 2>/dev/null || true
@@ -66,6 +69,7 @@ while [ $# -gt 0 ]; do
 		case "${2:?}" in yes|true|1) put share_cameras 1 ;; no|false|0) put share_cameras 0 ;;
 		*) echo "--share-cameras yes or no"; exit 2 ;; esac
 		shift ;;
+	--subnets) put extra_subnets "${2?}"; shift ;;
 	--update-server)
 		case "${2:?}" in GUNDIL-UPDATE-?*) ;; *) echo "That isn't a server code (GUNDIL-UPDATE-...)"; exit 1 ;; esac
 		put update_server "$2"; shift ;;

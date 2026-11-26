@@ -232,7 +232,7 @@ func (w *gatewayWeb) apiStatus(rw http.ResponseWriter, r *http.Request) {
 		out["relays"], out["relaysTotal"] = g.nostr.connected(), len(cfg.Relays)
 		out["public"], out["nat"] = g.lastStun()
 		if cfg.ShareCameras {
-			out["subnets"], _ = localAddrs()
+			out["subnets"] = g.sharedSubnets()
 		}
 	}
 	writeJSONResp(rw, 200, out)
@@ -264,6 +264,7 @@ func (w *gatewayWeb) apiSettings(rw http.ResponseWriter, r *http.Request) {
 		"authMode": mode, "homeKeyFingerprint": fp, "name": c.Name, "shareCameras": c.ShareCameras,
 		"relays": relays, "defaultRelays": strings.Join(defaultRelays, ", "),
 		"updates": c.Updates, "updateServer": c.UpdateServer, "checkHosts": strings.Join(c.CheckHosts, ", "),
+		"extraSubnets": strings.Join(c.ExtraSubnets, ", "),
 	})
 }
 
@@ -289,14 +290,15 @@ type settingsChange struct {
 	Updates      bool   `json:"updates"`
 	UpdateServer string `json:"updateServer"`
 	CheckHosts   string `json:"checkHosts"`
+	ExtraSubnets string `json:"extraSubnets"` // Comma separated private networks.
 }
 
 // validate turns a change into the lines to write, or says what's wrong.
 func (m settingsChange) validate(cur *config) ([][2]string, error) {
 	clean := func(s string) string { return strings.TrimSpace(s) }
-	m.Name, m.HomeKey, m.Relays, m.UpdateServer, m.CheckHosts =
-		clean(m.Name), clean(m.HomeKey), clean(m.Relays), clean(m.UpdateServer), clean(m.CheckHosts)
-	for _, v := range []string{m.Password, m.HomeKey, m.Name, m.Relays, m.UpdateServer, m.CheckHosts} {
+	m.Name, m.HomeKey, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets =
+		clean(m.Name), clean(m.HomeKey), clean(m.Relays), clean(m.UpdateServer), clean(m.CheckHosts), clean(m.ExtraSubnets)
+	for _, v := range []string{m.Password, m.HomeKey, m.Name, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets} {
 		if strings.ContainsAny(v, "\r\n") {
 			return nil, errors.New("No line breaks, please.")
 		}
@@ -371,6 +373,11 @@ func (m settingsChange) validate(cur *config) ([][2]string, error) {
 		m.CheckHosts = strings.Join(hs, ", ")
 	}
 	out = append(out, [2]string{"check_hosts", m.CheckHosts})
+	subnets, err := parseExtraSubnets(strings.Split(m.ExtraSubnets, ","))
+	if err != nil {
+		return nil, fmt.Errorf("Other networks: %v", err)
+	}
+	out = append(out, [2]string{"extra_subnets", strings.Join(subnets, ", ")})
 	return out, nil
 }
 

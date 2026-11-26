@@ -234,6 +234,7 @@ async function loadSettings() {
   f.name.value = settings.name;
   f.shareCameras.checked = settings.shareCameras;
   f.checkHosts.value = settings.checkHosts;
+  f.extraSubnets.value = settings.extraSubnets || '';
   f.relays.value = settings.relays;
   f.relays.placeholder = settings.defaultRelays;
   f.updates.checked = settings.updates;
@@ -256,6 +257,7 @@ async function saveSettings(ev) {
       name: f.name.value,
       shareCameras: f.shareCameras.checked,
       checkHosts: f.checkHosts.value,
+      extraSubnets: f.extraSubnets.value,
       relays: f.relays.value,
       updates: f.updates.checked,
       updateServer: f.updateServer.value,

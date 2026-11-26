@@ -4,12 +4,13 @@
 conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
 	. /lib/functions.sh
 	config_load gundil
-	local password home_key name share relays updates update_server
+	local password home_key name share relays updates update_server extra_subnets
 	config_get password main password ''
 	config_get home_key main home_key ''
 	config_get name main name 'Home router'
 	config_get_bool share main share_cameras 0
 	config_get relays main relays ''
+	config_get extra_subnets main extra_subnets ''
 	config_get_bool updates main updates 1
 	config_get update_server main update_server ''
 	[ -n "$password" ] || [ -n "$home_key" ] || return 1
@@ -21,6 +22,7 @@ conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
 		echo "name = $name"
 		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
 		[ -n "$relays" ] && echo "relays = $relays"
+		[ -n "$extra_subnets" ] && echo "extra_subnets = $extra_subnets"
 		[ "$updates" = 1 ] && echo "updates = true" || echo "updates = false"
 		[ -n "$update_server" ] && echo "update_server = $update_server"
 	} > "$1"

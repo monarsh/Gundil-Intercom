@@ -45,12 +45,26 @@ Future<(List<String>, Set<String>)> localSubnets() async {
   return (nets.toList()..sort(), own);
 }
 
-/// "192.168.50.203" is in "192.168.50.0/24".
+/// [host] (IPv4) is in [subnet]: "192.168.50.203" is in "192.168.50.0/24",
+/// "10.20.3.4" in "10.20.0.0/16" (gateways may share other subnets than
+/// their own /24).
 bool inSubnet(String host, String subnet) {
   final ip = InternetAddress.tryParse(host);
   if (ip == null || ip.type != InternetAddressType.IPv4) return false;
-  final b = ip.rawAddress;
-  return subnet == '${b[0]}.${b[1]}.${b[2]}.0/24';
+  final slash = subnet.indexOf('/');
+  if (slash < 0) return false;
+  final net = InternetAddress.tryParse(subnet.substring(0, slash));
+  final bits = int.tryParse(subnet.substring(slash + 1));
+  if (net == null ||
+      net.type != InternetAddressType.IPv4 ||
+      bits == null ||
+      bits < 0 ||
+      bits > 32) {
+    return false;
+  }
+  int value(List<int> b) => (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3];
+  final mask = bits == 0 ? 0 : (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF;
+  return value(ip.rawAddress) & mask == value(net.rawAddress) & mask;
 }
 
 class _Tunnel {
