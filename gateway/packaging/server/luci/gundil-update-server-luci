@@ -1,0 +1,57 @@
+#!/bin/sh
+# Helper for the LuCI page (luci-app-gundil-update-server):
+# status, log, restart, reset, reset-all.
+
+BIN=/usr/bin/gundil-update-server
+CONF=/var/etc/gundil-update-server.conf
+
+data_dir() {
+	d=$(uci -q get gundil-update.main.data_dir)
+	echo "${d:-/etc/gundil-update-server}"
+}
+
+conf() { [ -f "$CONF" ] && echo "--config=$CONF" || echo "--config=/dev/null"; }
+
+case "$1" in
+status)
+	echo "version=$($BIN --version 2>/dev/null)"
+	/etc/init.d/gundil-update-server enabled && echo enabled=1 || echo enabled=0
+	pid=$(ubus call service list '{"name":"gundil-update-server"}' 2>/dev/null |
+		jsonfilter -e '@["gundil-update-server"].instances.*.pid' 2>/dev/null | head -n1)
+	echo "pid=$pid"
+	l=$(uci -q get gundil-update.main.listen)
+	echo "listen=${l:-0.0.0.0:8780}"
+	d=$(data_dir)
+	[ -f "$d/keys.json" ] && echo "code=$($BIN $(conf) code 2>/dev/null)"
+	[ -f "$d/initial-password.txt" ] && echo "initial=$(cat "$d/initial-password.txt")"
+	echo "free=$(df -k "$d" 2>/dev/null | awk 'NR==2 {print $4}')"
+	;;
+log)
+	logread -e gundil-update-server 2>/dev/null | tail -n 200
+	;;
+restart)
+	/etc/init.d/gundil-update-server enable
+	/etc/init.d/gundil-update-server restart 2>&1
+	;;
+reset|reset-all)
+	ALL=
+	[ "$1" = reset-all ] && ALL=--all
+	/etc/init.d/gundil-update-server stop
+	$BIN $(conf) $ALL reset-admin 2>&1
+	/etc/init.d/gundil-update-server enable
+	/etc/init.d/gundil-update-server start
+	d=$(data_dir)
+	i=0
+	while [ ! -f "$d/initial-password.txt" ] && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+	if [ -f "$d/initial-password.txt" ]; then
+		echo
+		echo "New admin account. Sign in as \"admin\" with the one-time password:"
+		echo "    $(cat "$d/initial-password.txt")"
+		echo "You must choose a new password at the first sign-in."
+	fi
+	;;
+*)
+	echo "usage: $0 status|log|restart|reset|reset-all" >&2
+	exit 2
+	;;
+esac

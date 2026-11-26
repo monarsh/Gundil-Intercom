@@ -1,0 +1,14 @@
+{
+	"luci-app-gundil-update-server": {
+		"description": "Grant access to the Gundil Intercom update server settings",
+		"read": {
+			"file": {
+				"/usr/libexec/gundil-update-server-luci": [ "exec" ]
+			},
+			"uci": [ "gundil-update" ]
+		},
+		"write": {
+			"uci": [ "gundil-update" ]
+		}
+	}
+}

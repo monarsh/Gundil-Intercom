@@ -132,6 +132,23 @@ X
 			--files "$t" \
 			--output "dist-server/gundil-update-server-$VERSION-openwrt25-$name.apk"
 	done
+	t="$S/server/luci"
+	if [ -d "$t" ]; then
+		mkdir -p "$t/lib/apk/packages"
+		apk mkpkg \
+			--info "name:luci-app-gundil-update-server" \
+			--info "version:$APKV" \
+			--info "description:LuCI page for gundil-update-server: Services, Gundil update server (status, server code, admin page link, settings, log, restart, reset portal)." \
+			--info "arch:noarch" \
+			--info "license:proprietary" \
+			--info "origin:luci-app-gundil-update-server" \
+			--info "maintainer:Gundil Intercom" \
+			--info "depends:gundil-update-server luci-base" \
+			--script "post-install:$S/luci-post-install" \
+			--script "post-upgrade:$S/luci-post-install" \
+			--files "$t" \
+			--output "dist-server/gundil-update-server-$VERSION-openwrt25-luci.apk"
+	fi
 	ls -la dist-server/*.apk
 fi
 ls -la "$DIST"/*.apk

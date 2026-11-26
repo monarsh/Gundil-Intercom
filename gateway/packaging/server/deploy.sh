@@ -124,6 +124,27 @@ openwrt)
 	else
 		remote "opkg install --force-reinstall /tmp/gundil-update-server.$EXT"
 	fi
+	# The LuCI page too, when the router has LuCI.
+	if remote 'test -d /www/luci-static/resources/view' 2>/dev/null; then
+		LNAME=gundil-update-server-$VERSION-$FAM-luci.$EXT
+		LPKG=
+		for dir in "$HERE" .; do
+			for f in "$dir/server-$LNAME" "$dir/$LNAME"; do [ -f "$f" ] && { LPKG=$f; break 2; }; done
+		done
+		if [ -z "$LPKG" ] && [ -n "$VERSION" ]; then
+			LPKG=${TMPDIR:-/tmp}/server-$LNAME
+			curl -fsSL -o "$LPKG" "https://github.com/$REPO/releases/download/v$VERSION/server-$LNAME" || LPKG=
+		fi
+		if [ -n "$LPKG" ]; then
+			say "Installing the LuCI page (Services > Gundil update server)"
+			remote "cat > /tmp/gundil-update-server-luci.$EXT" < "$LPKG"
+			if [ "$PM" = apk ]; then
+				remote "apk add --allow-untrusted /tmp/gundil-update-server-luci.$EXT; rm -f /tmp/gundil-update-server-luci.$EXT"
+			else
+				remote "opkg install --force-reinstall /tmp/gundil-update-server-luci.$EXT; rm -f /tmp/gundil-update-server-luci.$EXT"
+			fi
+		fi
+	fi
 	remote "rm -f /tmp/gundil-update-server.$EXT; /etc/init.d/gundil-update-server enable; /etc/init.d/gundil-update-server restart; sleep 2;
 		logread -e gundil-update-server | tail -n 12;
 		[ -f /etc/gundil-update-server/initial-password.txt ] && echo \"One-time password: \$(cat /etc/gundil-update-server/initial-password.txt)\" || true"

@@ -1,0 +1,14 @@
+{
+	"admin/services/gundil-update-server": {
+		"title": "Gundil update server",
+		"order": 61,
+		"action": {
+			"type": "view",
+			"path": "gundil-update-server"
+		},
+		"depends": {
+			"acl": [ "luci-app-gundil-update-server" ],
+			"uci": { "gundil-update": true }
+		}
+	}
+}

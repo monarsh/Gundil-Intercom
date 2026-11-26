@@ -83,6 +83,34 @@ for t in aarch64:linux-arm64 arm:linux-armv7 mipsel:linux-mipsle mips:linux-mips
 		--owner=0 --group=0 ./debian-binary ./control.tar.gz ./data.tar.gz)
 done
 
+# LuCI page (Services → Gundil update server), the same for every CPU.
+p="$TMP/ipk-luci"
+mkdir -p "$p/data/www/luci-static/resources/view" "$p/data/usr/share/luci/menu.d" \
+	"$p/data/usr/share/rpcd/acl.d" "$p/data/usr/libexec" "$p/control"
+install -m 644 $S/luci/gundil-update-server.js "$p/data/www/luci-static/resources/view/gundil-update-server.js"
+install -m 644 $S/luci/menu.json "$p/data/usr/share/luci/menu.d/luci-app-gundil-update-server.json"
+install -m 644 $S/luci/acl.json "$p/data/usr/share/rpcd/acl.d/luci-app-gundil-update-server.json"
+install -m 755 $S/luci/gundil-update-server-luci "$p/data/usr/libexec/gundil-update-server-luci"
+mkdir -p "$STAGE/luci" && cp -a "$p/data/." "$STAGE/luci/"
+size=$(du -sk "$p/data" | cut -f1)
+cat > "$p/control/control" <<-C
+Package: luci-app-gundil-update-server
+Version: $VERSION
+Depends: gundil-update-server, luci-base
+Architecture: all
+Maintainer: Gundil Intercom
+Installed-Size: $((size * 1024))
+Description: LuCI page for gundil-update-server: Services, Gundil update server (status, server code, admin page link, settings, log, restart, reset portal).
+C
+printf '#!/bin/sh\n[ -n "$IPKG_INSTROOT" ] || { rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null; /etc/init.d/rpcd reload; }\nexit 0\n' > "$p/control/postinst"
+printf '#!/bin/sh\n[ -n "$IPKG_INSTROOT" ] || rm -f /tmp/luci-indexcache* 2>/dev/null\nexit 0\n' > "$p/control/postrm"
+chmod 755 "$p/control/postinst" "$p/control/postrm"
+echo 2.0 > "$p/debian-binary"
+(cd "$p/control" && tar czf ../control.tar.gz --owner=0 --group=0 .)
+(cd "$p/data" && tar czf ../data.tar.gz --owner=0 --group=0 .)
+(cd "$p" && tar czf "$OLDPWD/$DIST/gundil-update-server-$VERSION-openwrt-luci.ipk" \
+	--owner=0 --group=0 ./debian-binary ./control.tar.gz ./data.tar.gz)
+
 # Windows (a service: gundil-update-server.exe install).
 for t in x86_64:amd64 arm64:arm64; do
 	IFS=: read name arch <<-X

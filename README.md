@@ -309,6 +309,13 @@ Its files are in each release under `server-…` (the apps' files are under
   `sudo ./install.sh` (Linux), `apk add --allow-untrusted …openwrt25-….apk`
   (OpenWrt 25), `gundil-update-server.exe install` (Windows, as
   Administrator).
+- **On OpenWrt, LuCI** (`…-openwrt25-luci.apk` / `…-openwrt-luci.ipk`):
+  **Services → Gundil update server** shows whether it runs, its version and
+  server code (Copy), the one-time password of a new admin account, and an
+  **Open admin page** button; sets the admin page address, the data folder
+  (e.g. a USB disk for kept files), the GitHub repository and relays; and has
+  **Show log**, **Restart**, **Reset portal** and **Reset all**. Devices,
+  versions and the policy stay on the server's own admin page.
 - **Web page:** `http://<server>:8780`. There is one account, `admin`; no
   other users can be created. After a new install it has a **one-time
   password** (in the server's log and in `initial-password.txt` in its data

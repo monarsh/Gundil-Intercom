@@ -14,6 +14,7 @@ Linux (PC, Raspberry Pi, Orange Pi; systemd):
     cd gundil-update-server-*/ && sudo ./install.sh
 OpenWrt:     apk add --allow-untrusted gundil-update-server-*-openwrt25-<cpu>.apk
              (older OpenWrt: opkg install gundil-update-server-*-openwrt-<cpu>.ipk)
+             LuCI page (Services > Gundil update server): add the -luci package too.
 Windows:     unzip, then as Administrator:  gundil-update-server.exe install
 AppImage:    chmod +x gundil-update-server-*.AppImage && ./gundil-update-server-*.AppImage
 From your computer over SSH (any of the above):
