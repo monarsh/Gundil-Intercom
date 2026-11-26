@@ -28,6 +28,7 @@ Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no acc
 | Orange Pi PC (H3), Pi with 32-bit OS / Pi Zero | `…-linux-armv7.tar.gz` / `…-linux-armv6.tar.gz` |
 | Linux PC or server | `app-gundil-gateway-VERSION-linux-x86_64.tar.gz` |
 | Windows PC | `app-gundil-gateway-VERSION-windows-x86_64.zip` (or `…-arm64.zip`) |
+| Any of these, installed from your computer over SSH | `app-gundil-gateway-VERSION-deploy.sh` (`./app-gundil-gateway-VERSION-deploy.sh root@192.168.1.1 --home-key`) |
 
 **Update server** (`gundil-update-server`: tells every Gundil Intercom which version to install and hands out the files, without a public IP; admin web page; see below). Its files start with `server-`:
 

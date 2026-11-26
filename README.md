@@ -232,6 +232,19 @@ gateway (its line in the list says *via …* 🌐); back home it's direct again.
 The gateway only forwards to devices on its own LAN (its private /24
 networks), never to the internet or to itself.
 
+**From your computer over SSH** (any of the devices below):
+`gateway/packaging/deploy-gateway.sh root@192.168.1.1 --home-key` finds out
+whether the device runs OpenWrt (opkg or apk), Linux or Windows and its CPU,
+downloads the matching package of the newest release (or `--version X.Y.Z`,
+or `--package FILE`), installs it (with the LuCI page on OpenWrt), saves the
+settings you give (`--home-key` or `--password`, which it asks for,
+`--name`, `--share-cameras yes|no`, `--update-server CODE`; other settings are
+kept), restarts the gateway and runs the network check. Running it again
+upgrades. From the next release it is also attached to each release as
+`app-gundil-gateway-VERSION-deploy.sh`.
+
+By hand:
+
 **OpenWrt** (e.g. a router with an ARM 64-bit CPU, `…-openwrt-aarch64.ipk`):
 
 ```sh

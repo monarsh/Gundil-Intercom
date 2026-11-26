@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds every gundil-gateway package into ../dist:
-#   linux tarballs (install.sh + systemd), OpenWrt .ipk, Windows zips.
+#   linux tarballs (install.sh + systemd), OpenWrt .ipk, Windows zips,
+#   and deploy-gateway.sh (install over SSH from your computer).
 # Usage: packaging/build.sh VERSION [UPDATE_SERVER_CODE]
 set -e
 VERSION=${1:?version}
@@ -106,4 +107,7 @@ for t in x86_64:amd64 arm64:arm64; do
 	(cd "$TMP" && zip -qr "$OLDPWD/$DIST/gundil-gateway-$VERSION-windows-$name.zip" \
 		"gundil-gateway-$VERSION-windows-$name")
 done
+# Deploy from your computer over SSH (any of the above).
+sed "s/@VERSION@/$VERSION/" packaging/deploy-gateway.sh > "$DIST/gundil-gateway-$VERSION-deploy.sh"
+chmod 755 "$DIST/gundil-gateway-$VERSION-deploy.sh"
 ls -la "$DIST"
