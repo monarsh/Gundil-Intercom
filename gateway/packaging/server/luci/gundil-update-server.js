@@ -92,11 +92,35 @@ return view.extend({
 					'class': 'cbi-button cbi-button-neutral',
 					'click': function(ev) {
 						ev.preventDefault();
-						const t = document.getElementById('gus-code').textContent;
-						if (navigator.clipboard)
-							navigator.clipboard.writeText(t).then(function() {
-								ui.addNotification(null, E('p', [ _('Server code copied') ]), 'info');
-							});
+						const node = document.getElementById('gus-code');
+						const t = node.textContent;
+						const done = function() {
+							ui.addNotification(null, E('p', [ _('Server code copied') ]), 'info');
+						};
+						// LuCI is usually plain http://, where the clipboard API
+						// doesn't exist: use the old copy command, else select it.
+						const fallback = function() {
+							const ta = document.createElement('textarea');
+							ta.value = t;
+							ta.style.position = 'fixed';
+							ta.style.top = '-1000px';
+							document.body.appendChild(ta);
+							ta.select();
+							let ok = false;
+							try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+							ta.remove();
+							if (ok)
+								return done();
+							const r = document.createRange();
+							r.selectNodeContents(node);
+							window.getSelection().removeAllRanges();
+							window.getSelection().addRange(r);
+							ui.addNotification(null, E('p', [ _('Press Ctrl+C to copy the selected code.') ]), 'info');
+						};
+						if (navigator.clipboard && window.isSecureContext)
+							navigator.clipboard.writeText(t).then(done, fallback);
+						else
+							fallback();
 					}
 				}, [ _('Copy') ])
 			]);

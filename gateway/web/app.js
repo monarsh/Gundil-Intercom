@@ -27,6 +27,37 @@ function el(tag, attrs = {}, ...kids) {
   return e;
 }
 
+// copyText: the clipboard API exists only on HTTPS and localhost; this page
+// is usually opened over plain http://<LAN address>, so fall back to the
+// older copy command through a hidden text field.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) { /* try the old way */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+function selectText(node) {
+  const r = document.createRange();
+  r.selectNodeContents(node);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
 function toast(msg) {
   const t = $('#toast');
   t.textContent = msg;
@@ -564,7 +595,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#gh-load').addEventListener('click', loadGithub);
   $('#f-upload').addEventListener('submit', upload);
   $('#copy-code').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText($('#code').textContent); toast('Copied'); } catch (_) { toast('Select the code and copy it.'); }
+    if (await copyText($('#code').textContent)) toast('Copied');
+    else {
+      selectText($('#code'));
+      toast('Press Ctrl+C (or Cmd+C) to copy the selected code.');
+    }
   });
   $('#check').addEventListener('click', async () => {
     $('#check').disabled = true;
