@@ -124,7 +124,7 @@ func newGatewayWeb(cfg *config, lr *logRing) (*gatewayWeb, error) {
 		log.Printf("*** Web page: new admin account. Sign in as \"admin\" with the one-time password %s", pw)
 		log.Printf("*** (also in %s); you must choose a new password first.", accounts.path("initial-password.txt"))
 	}
-	return &gatewayWeb{portal: newPortal(accounts, cfg.ScryptN), cfgPath: cfg.Path, log: lr,
+	return &gatewayWeb{portal: newPortal(accounts, cfg.ScryptN, "gundil_gateway_session"), cfgPath: cfg.Path, log: lr,
 		started: time.Now(), reload: make(chan struct{}, 1), cfg: cfg, afterInstall: restartForUpdate}, nil
 }
 

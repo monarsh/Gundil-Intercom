@@ -39,7 +39,7 @@ type webServer struct {
 }
 
 func newWebServer(cfg *serverConfig, st *store, srv *updateServer, lr *logRing) *webServer {
-	return &webServer{portal: newPortal(st, cfg.ScryptN), cfg: cfg, st: st, srv: srv, log: lr}
+	return &webServer{portal: newPortal(st, cfg.ScryptN, "gundil_server_session"), cfg: cfg, st: st, srv: srv, log: lr}
 }
 
 // ---------------------------------------------------------------- routes

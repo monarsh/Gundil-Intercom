@@ -56,7 +56,7 @@ async function api(method, path, body, opts = {}) {
   const data = isJson ? await r.json() : await r.text();
   if (!r.ok) {
     if (r.status === 401 && path !== 'login') {
-      showLogin(signedIn ? 'You were signed out after 30 minutes without activity.' : null);
+      showLogin(signedIn ? signedOutNote() : null);
     } else if (r.status === 403 && data && data.mustChange) {
       showPassword(true);
     }
@@ -71,6 +71,14 @@ function show(view) {
   for (const s of $$('main > section')) s.hidden = s.id !== 'v-' + view;
   $('#top').hidden = !signedIn || view === 'login' || view === 'password-forced';
   if (view === 'password-forced') $('#v-password').hidden = false;
+}
+
+// signedOutNote: why the session ended. Long idle is the usual reason;
+// otherwise the service restarted (sessions are kept in memory) or the
+// password was changed in another browser.
+function signedOutNote() {
+  if (Date.now() - lastActivity >= IDLE_MS - 60000) return 'You were signed out after 30 minutes without activity.';
+  return 'You were signed out: the service restarted, or the password was changed elsewhere. Sign in again.';
 }
 
 function showLogin(note) {

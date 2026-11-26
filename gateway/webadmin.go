@@ -26,11 +26,10 @@ import (
 )
 
 const (
-	sessionIdle   = 30 * time.Minute
-	maxFailures   = 5
-	lockDuration  = 5 * time.Minute
-	minPassword   = 10
-	sessionCookie = "gundil_session"
+	sessionIdle  = 30 * time.Minute
+	maxFailures  = 5
+	lockDuration = 5 * time.Minute
+	minPassword  = 10
 )
 
 type adminAccount struct {
@@ -107,6 +106,10 @@ type session struct {
 type portal struct {
 	st      accountStore
 	scryptN int
+	// cookie: the session cookie's name. Browsers keep cookies per host,
+	// not per port, so the update server and the gateway on one machine
+	// need different names, or signing in on one signs out the other.
+	cookie string
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -114,8 +117,8 @@ type portal struct {
 	lockedTo time.Time
 }
 
-func newPortal(st accountStore, scryptN int) *portal {
-	return &portal{st: st, scryptN: scryptN, sessions: map[string]*session{}}
+func newPortal(st accountStore, scryptN int, cookie string) *portal {
+	return &portal{st: st, scryptN: scryptN, cookie: cookie, sessions: map[string]*session{}}
 }
 
 func (p *portal) checkPassword(pw string) bool {
@@ -128,7 +131,7 @@ func (p *portal) checkPassword(pw string) bool {
 }
 
 func (p *portal) sessionOf(r *http.Request) (string, *session) {
-	c, err := r.Cookie(sessionCookie)
+	c, err := r.Cookie(p.cookie)
 	if err != nil {
 		return "", nil
 	}
@@ -159,7 +162,7 @@ func (p *portal) newSession(rw http.ResponseWriter) {
 	}
 	p.sessions[tok] = &session{last: time.Now()}
 	p.mu.Unlock()
-	http.SetCookie(rw, &http.Cookie{Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true,
+	http.SetCookie(rw, &http.Cookie{Name: p.cookie, Value: tok, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteStrictMode})
 }
 
@@ -255,7 +258,7 @@ func (p *portal) apiLogout(rw http.ResponseWriter, r *http.Request) {
 		delete(p.sessions, tok)
 		p.mu.Unlock()
 	}
-	http.SetCookie(rw, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
+	http.SetCookie(rw, &http.Cookie{Name: p.cookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
 		SameSite: http.SameSiteStrictMode})
 	writeJSONResp(rw, 200, map[string]any{"ok": true})
 }
