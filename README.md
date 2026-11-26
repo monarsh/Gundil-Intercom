@@ -209,7 +209,7 @@ password anyone on your Wi-Fi can connect, as before.
   on the LAN, with 64 kbit/s audio (IMA ADPCM) instead of 256.
 - **On the LAN or a VPN** the direct connection is still used first.
 - **What it needs:** NATs that keep one public port per socket ("cone",
-  most home routers and many carriers, CGNAT included). **⚙ Settings → Check
+  most home routers and many carriers, CGNAT included). **⋮ More → Check
   network** shows yours. Between two *symmetric* NATs a direct path isn't
   possible and the app says so; there's no relay server.
 - **Battery:** while idle only the relay connections stay open; the direct

@@ -221,8 +221,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     var boot = bootWas;
     var internet = service.internetMode;
     var share = service.shareCameras;
-    String? netCheck;
-    var checking = false;
     if (!mounted) return;
     final saved = await showDialog<bool>(
       context: context,
@@ -394,10 +392,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'home key when there is none: pair each device once.',
                   ),
                   value: internet,
-                  onChanged: (v) => setLocal(() {
-                    internet = v;
-                    netCheck = null;
-                  }),
+                  onChanged: (v) => setLocal(() => internet = v),
                 ),
                 if (internet)
                   ListTile(
@@ -438,31 +433,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               '${service.internetRelaysTotal} connected',
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      icon: checking
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.network_check),
-                      label: const Text('Check network'),
-                      onPressed: checking
-                          ? null
-                          : () async {
-                              setLocal(() => checking = true);
-                              final r = await service.checkInternet();
-                              setLocal(() {
-                                checking = false;
-                                netCheck = _describeCheck(r);
-                              });
-                            },
-                    ),
-                  ),
-                  if (netCheck != null)
-                    Text(netCheck!, style: Theme.of(ctx).textTheme.bodySmall),
                 ],
                 const SizedBox(height: 16),
                 Text('This device', style: Theme.of(ctx).textTheme.titleSmall),
@@ -567,6 +537,69 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     nameCtl.dispose();
     passwordCtl.dispose();
     _focus.requestFocus();
+  }
+
+  /// More → Check network: relays, STUN (NAT type) and the public address.
+  Future<void> _checkNetworkDialog() async {
+    String? result;
+    var checking = false;
+    var open = true;
+    Future<void> run(StateSetter setLocal) async {
+      setLocal(() {
+        checking = true;
+        result = null;
+      });
+      final r = service.internetMode ? await service.checkInternet() : null;
+      if (!open) return; // Closed while checking.
+      setLocal(() {
+        checking = false;
+        result = service.internetMode
+            ? _describeCheck(r)
+            : 'Internet calls are off: turn them on in Settings first.';
+      });
+    }
+
+    var started = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          if (!started) {
+            started = true;
+            Future.microtask(() => run(setLocal));
+          }
+          return AlertDialog(
+            title: const Text('Check network'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (checking) ...[
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Connecting to the relays and asking STUN servers for '
+                    'the NAT type. Takes about 10 seconds.',
+                  ),
+                ] else if (result != null)
+                  SelectableText(result!),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: checking ? null : () => run(setLocal),
+                child: const Text('Check again'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    open = false;
   }
 
   static String _describeCheck(NetworkCheck? r) {
@@ -688,6 +721,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     tooltip: 'More',
                     onSelected: (action) => action(),
                     itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _checkNetworkDialog,
+                        child: const ListTile(
+                          leading: Icon(Icons.network_check),
+                          title: Text('Check network'),
+                          subtitle: Text('Relays, NAT type, public address'),
+                        ),
+                      ),
                       if (widget.updater != null) ...[
                         PopupMenuItem(
                           value: () =>

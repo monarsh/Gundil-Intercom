@@ -1,4 +1,5 @@
-// Updates is in the More menu (first, above Export list), not in Settings.
+// Check network and Updates are in the More menu (first, above Export
+// list), not in Settings.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,7 +18,7 @@ class _NoInstaller extends UpdateInstaller {
 }
 
 void main() {
-  testWidgets('Updates is in More, above Export list, not in Settings', (
+  testWidgets('Check network and Updates are in More, not in Settings', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 900);
@@ -64,10 +65,16 @@ void main() {
     await settle();
     await tester.tap(find.byTooltip('More'));
     await settle();
+    final check = find.text('Check network');
     final updates = find.text('Updates');
     final export = find.text('Export list');
+    expect(check, findsOneWidget);
     expect(updates, findsOneWidget);
     expect(export, findsOneWidget);
+    expect(
+      tester.getTopLeft(check).dy,
+      lessThan(tester.getTopLeft(updates).dy),
+    );
     expect(
       tester.getTopLeft(updates).dy,
       lessThan(tester.getTopLeft(export).dy),
@@ -80,9 +87,20 @@ void main() {
     await tester.tapAt(const Offset(5, 5)); // Close it.
     await settle();
 
-    // Not in Settings any more.
+    // Check network opens its dialog (internet calls are off here).
+    await tester.tap(find.byTooltip('More'));
+    await settle();
+    await tester.tap(find.text('Check network'));
+    await settle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.textContaining('Internet calls are off'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await settle();
+
+    // Neither is in Settings any more.
     await tester.tap(find.byTooltip('Settings'));
     await settle();
     expect(find.text('Updates'), findsNothing);
+    expect(find.text('Check network'), findsNothing);
   });
 }
