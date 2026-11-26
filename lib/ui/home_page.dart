@@ -207,7 +207,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final nameCtl = TextEditingController(text: service.name);
     final passwordCtl = TextEditingController(text: service.password);
     var showPassword = false;
-    final addrs = await _localAddresses();
     final autostartWas = await Autostart.isEnabled();
     var autostart = autostartWas;
     final trayWas = widget.settings.minimizeToTray;
@@ -434,16 +433,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
                 ],
-                const SizedBox(height: 16),
-                Text('This device', style: Theme.of(ctx).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                SelectableText(
-                  'Gundil Intercom $appVersion\n'
-                  'Addresses: ${addrs.isEmpty ? 'none' : addrs.join(', ')}\n'
-                  'TCP port: ${service.listenPort}\n'
-                  'Discovery: ${service.discoveryRunning ? 'UDP $discoveryPort broadcast' : 'off'}',
-                  style: Theme.of(ctx).textTheme.bodySmall,
-                ),
               ],
             ),
           ),
@@ -537,6 +526,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     nameCtl.dispose();
     passwordCtl.dispose();
     _focus.requestFocus();
+  }
+
+  /// More → This device: version, addresses, port and discovery.
+  Future<void> _deviceInfoDialog() async {
+    final addrs = await _localAddresses();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('This device'),
+        content: SelectableText(
+          'Gundil Intercom $appVersion\n'
+          'Name: ${service.name}\n'
+          'Addresses: ${addrs.isEmpty ? 'none' : addrs.join(', ')}\n'
+          'TCP port: ${service.listenPort}\n'
+          'Discovery: ${service.discoveryRunning ? 'UDP $discoveryPort broadcast' : 'off'}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// More → Check network: relays, STUN (NAT type) and the public address.
@@ -721,6 +735,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     tooltip: 'More',
                     onSelected: (action) => action(),
                     itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _deviceInfoDialog,
+                        child: const ListTile(
+                          leading: Icon(Icons.info_outline),
+                          title: Text('This device'),
+                          subtitle: Text('Version, addresses, ports'),
+                        ),
+                      ),
                       PopupMenuItem(
                         value: _checkNetworkDialog,
                         child: const ListTile(
