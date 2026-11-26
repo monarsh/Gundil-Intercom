@@ -4,7 +4,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -302,4 +305,54 @@ func TestServerCode(t *testing.T) {
 	if compareVersions("1.10.0", "1.9.9") <= 0 || compareVersions("v1.9.1", "1.9.1") != 0 {
 		t.Fatal("version order")
 	}
+}
+
+// Starting a download job must not reset the job's lock while it is held
+// ("fatal error: sync: unlock of unlocked mutex" in 1.9.1 and 1.9.2,
+// whenever a release was added with copies kept).
+func TestImportJobStart(t *testing.T) {
+	var j importJob
+	j.set(func(j *importJob) { j.Error, j.Done = "old", 3 })
+	j.start("1.9.3", 4)
+	s := j.snapshot()
+	if s["version"] != "1.9.3" || s["total"] != 4 || s["running"] != true || s["error"] != "" || s["done"] != 0 {
+		t.Fatalf("job after start: %v", s)
+	}
+	j.set(func(j *importJob) { j.Done = 1 }) // The lock still works.
+}
+
+// Adding a release from GitHub with copies kept (through the web page):
+// the server stays up and the copy is downloaded and checked.
+func TestImportKeepCopies(t *testing.T) {
+	file := []byte("pretend apk")
+	sum := sha256.Sum256(file)
+	var gh *httptest.Server
+	gh = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/a.apk") {
+			rw.Write(file)
+			return
+		}
+		fmt.Fprintf(rw, `[{"tag_name":"v1.9.3","assets":[{"name":"app-Gundil_Intercom-1.9.3-android-arm64-v8a.apk",`+
+			`"size":%d,"browser_download_url":"%s/a.apk","digest":"sha256:%s"}]}]`, len(file), gh.URL, hex.EncodeToString(sum[:]))
+	}))
+	defer gh.Close()
+	old := githubAPI
+	githubAPI = gh.URL
+	defer func() { githubAPI = old }()
+
+	wt := newWebTest(t)
+	wt.signIn()
+	if code, out := wt.do("POST", "/api/versions/import", map[string]any{"tag": "v1.9.3", "keep": []string{"android"}}); code != 200 {
+		t.Fatalf("import: %d %v", code, out)
+	}
+	for i := 0; i < 100; i++ {
+		if path, f := wt.st.localFile("Gundil_Intercom-1.9.3-android-arm64-v8a.apk"); f != nil {
+			if b, _ := os.ReadFile(path); !bytes.Equal(b, file) {
+				t.Fatal("wrong copy")
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no copy kept; job: %v", wt.w.job.snapshot())
 }

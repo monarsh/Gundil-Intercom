@@ -124,6 +124,14 @@ func (j *importJob) snapshot() map[string]any {
 		"bytes": j.Bytes, "error": j.Error, "running": j.Running}
 }
 
+// start: a new job. Field by field: assigning a whole importJob would also
+// reset the (held) lock.
+func (j *importJob) start(version string, total int) {
+	j.set(func(j *importJob) {
+		j.Version, j.File, j.Done, j.Total, j.Bytes, j.Error, j.Running = version, "", 0, total, 0, "", true
+	})
+}
+
 func (j *importJob) set(f func(j *importJob)) {
 	j.mu.Lock()
 	f(j)
@@ -187,9 +195,7 @@ func importRelease(st *store, repo, tag string, keep map[string]bool, job *impor
 		}
 	}
 	if len(todo) > 0 {
-		job.set(func(j *importJob) {
-			*j = importJob{Version: version, Total: len(todo), Running: true}
-		})
+		job.start(version, len(todo))
 		go func() {
 			for i, f := range todo {
 				job.set(func(j *importJob) { j.File, j.Done, j.Bytes = f.Name, i, 0 })
