@@ -28,9 +28,16 @@ conf_example() {
 tools() { # dir: the scripts that work from the admin's computer or the server
 	sed "s/@VERSION@/$VERSION/" $S/deploy.sh > "$1/deploy.sh"
 	chmod 755 "$1/deploy.sh"
+	install -m 755 $S/uninstall.sh "$1/uninstall.sh"
 	install -m 755 $S/reset-portal.sh "$1/reset-portal.sh"
 	cp $S/README.txt "$1/README.txt"
 }
+
+# Deploy and uninstall from your computer over SSH, also as files of their
+# own in the release (server-gundil-update-server-deploy.sh, ...-uninstall.sh).
+sed "s/@VERSION@/$VERSION/" $S/deploy.sh > "$DIST/gundil-update-server-deploy.sh"
+install -m 755 $S/uninstall.sh "$DIST/gundil-update-server-uninstall.sh"
+chmod 755 "$DIST/gundil-update-server-deploy.sh"
 
 # Linux tarballs.
 for t in x86_64:amd64: arm64:arm64: armv7:arm:7 armv6:arm:6 mipsle:mipsle: mips:mips:; do

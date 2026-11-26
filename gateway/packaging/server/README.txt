@@ -54,6 +54,14 @@ restarts (sign in again). Devices aren't affected; offer the new version
 to them on the Versions tab. Linux installs made before this button can't replace
 their own files: run install.sh (or deploy.sh) of the new version once.
 
+Uninstall
+---------
+From your computer over SSH (Linux, OpenWrt, Windows):
+    ./uninstall.sh user@host            keeps the data and the server key
+    ./uninstall.sh --purge user@host    deletes everything: every app then
+                                        needs a new server code
+On the server itself (Linux): sudo ./install.sh --uninstall [--purge].
+
 Reset the portal
 ----------------
     sudo gundil-reset-portal            new admin account (one-time password)

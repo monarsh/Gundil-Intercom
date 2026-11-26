@@ -113,4 +113,6 @@ done
 # (offline it falls back to the version built in here).
 sed "s/@VERSION@/$VERSION/" packaging/deploy-gateway.sh > "$DIST/gundil-gateway-deploy.sh"
 chmod 755 "$DIST/gundil-gateway-deploy.sh"
+# And to remove it again (keeps the settings unless --purge).
+install -m 755 packaging/uninstall-gateway.sh "$DIST/gundil-gateway-uninstall.sh"
 ls -la "$DIST"

@@ -261,6 +261,13 @@ chmod +x app-gundil-gateway-deploy.sh
 ./app-gundil-gateway-deploy.sh --version 1.9.2 root@192.168.1.1  # a given one
 ```
 
+To remove it again, from your computer (`app-gundil-gateway-uninstall.sh`,
+in every release): `./app-gundil-gateway-uninstall.sh root@192.168.1.1`. It
+stops the gateway and removes the program (and the LuCI page) on OpenWrt,
+Linux or Windows, and keeps the settings and the home key so deploying again
+picks up where it left off; `--purge` deletes them too. It asks first
+(`-y` doesn't), and leaves an update server on the same device alone.
+
 By hand:
 
 **OpenWrt** (e.g. a router with an ARM 64-bit CPU, `…-openwrt-aarch64.ipk`):
@@ -381,7 +388,13 @@ admin page (TCP 8780).
   the target is Linux, OpenWrt or Windows and its CPU, uploads the right
   package of the **newest release** (or `--version X.Y.Z`; without GitHub it
   uses its own version) and installs it. `./deploy.sh --web-only user@host` copies only the
-  web page files (`web/`), for example after you changed them. By hand:
+  web page files (`web/`), for example after you changed them. **Remove** it the
+  same way: `./uninstall.sh user@host` (also in every release as
+  `server-gundil-update-server-uninstall.sh`, next to
+  `server-gundil-update-server-deploy.sh`). It keeps the data folder with the
+  **server key**, so a new install has the same server code; `--purge`
+  deletes everything, after which every app needs a new server code. A
+  gateway on the same device is left alone. By hand:
   `sudo ./install.sh` (Linux), `apk add --allow-untrusted …openwrt25-….apk`
   (OpenWrt 25), `gundil-update-server.exe install` (Windows, as
   Administrator).

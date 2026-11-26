@@ -52,6 +52,7 @@ jobs:
           go vet ./... && GOOS=windows go vet ./... && go test ./...
           go vet -tags updateserver ./... && GOOS=windows go vet -tags updateserver ./... && go test -tags updateserver ./...
           sh packaging/luci/test-helper.sh
+          sh packaging/test-uninstall.sh
       - name: Build the packages (gateway and update server)
         run: |
           TAG="${{ inputs.release || inputs.test || github.ref_name }}"
