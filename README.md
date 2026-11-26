@@ -14,7 +14,7 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
 | Android (phone/tablet) | App | Phone's hardware echo canceller (call audio mode) |
 | Windows 10/11 | App + installer | Software echo suppression |
 | iPhone / iPad (iOS 15+) | App (unsigned IPA, sideloaded) | Software echo suppression |
-| Mac (macOS 10.15+) | App | Software echo suppression |
+| Mac (macOS 12+) | App | Software echo suppression |
 | Linux PC (x64) | App | Software echo suppression |
 | Raspberry Pi 4/5, 64-bit OS | App (`linux-arm64`) **or** headless node | Software echo suppression |
 | Orange Pi PC/One/Zero, Raspberry Pi 2/3 or 32-bit OS | Headless node | Software echo suppression |
@@ -90,8 +90,8 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   reads "*Gate is speaking*", and the peer list shows *Speaking…*. With
   *Everyone* you can tell the voices apart.
 - **Know when someone connects**: an in-app "*Gate connected*" message. If
-  the window is hidden, Windows shows a notification from the tray icon and
-  the tray tooltip names who's speaking. On Android, the background-mode
+  the window is hidden, Windows, Linux and Mac show a notification, and the
+  tray / menu bar icon names who's speaking. On Android, the background-mode
   notification shows "*Connected with Gate*" or "*Gate wants to talk*". The
   Orange Pi / Raspberry Pi node logs "*🔊 Gate is speaking*".
 - **Video calls (Android, Windows and Linux)**: during a call, press
@@ -136,13 +136,19 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
   talks so they don't hear themselves. Turn it off with a headset.
 - **Zero configuration**: intercoms on the same LAN/Wi-Fi find each other
   automatically with UDP broadcast. No server and no accounts.
+- **Self-update (1.9.1+)**: your own update server (no public IP needed)
+  decides which version every intercom runs, upgrade or downgrade, from an
+  admin web page. See *Self-update* below.
+- **Battery saving on phones**: while no call is on, Android and iPhone slow
+  down their keep-alives, more so on mobile data or in Low Power Mode.
 - **Reliable**: a member that stops responding (crash, Wi-Fi lost) is dropped
   after 8 s. Unanswered calls time out after 30 s. Calling each other at the
   same moment just connects.
-- **Starts with Windows (or Linux login)**: optional. It starts in the
-  system tray at sign-in, so the intercom is always ready to receive.
-- **System tray (Windows and Linux)**: minimize or close the window and it
-  keeps running in the tray. Use the tray icon to open it again or *Exit*.
+- **Starts with Windows (or Linux / Mac login)**: optional. It starts in the
+  system tray or menu bar at sign-in, so the intercom is always ready to
+  receive.
+- **System tray (Windows, Linux) and menu bar (Mac)**: minimize or close the
+  window and it keeps running there. Use the icon to open it again or quit.
   It shows who you're connected with, and a notification appears when a
   line opens while the window is hidden.
 - **Peers stay in the list**: every peer that's been discovered or added by IP
@@ -286,6 +292,9 @@ from **your own update server** (`gundil-update-server`). One server serves
 all installs worldwide; it needs **no public IP and no port forwarding**:
 the apps reach it like internet calls, through public Nostr relays, STUN and
 UDP hole punching.
+
+![The update server's web page: devices, their versions, and the updates
+they were offered](docs/update-server.png)
 
 **The server** runs on a Linux PC or server (x86_64), a Raspberry Pi or
 Orange Pi, an OpenWrt router, a Windows PC (as a service) or as an AppImage.
@@ -698,7 +707,7 @@ background**.
 lib/                        Flutter app
   main.dart                 app entry, theme
   src/                      Flutter glue: ChangeNotifier wrapper, settings,
-                            Android/Windows platform bridges, autostart
+                            platform bridges, autostart, self-update
   ui/                       home page, peer list, connect/hang-up panel
 packages/intercom_core/     pure-Dart engine: protocol, discovery, two-way
                             logic, FFI audio bindings, and the headless node
@@ -708,7 +717,13 @@ packages/intercom_audio/    Flutter plugin that builds the C audio library
 node/                       headless node install files (systemd, setup
                             scripts, README for Orange Pi)
 tool/build_node.sh          builds node tarballs (arm, arm64, x64)
-android/ linux/ windows/    platform runners
+gateway/                    Go: gundil-gateway (cameras from outside) and,
+                            with -tags updateserver, gundil-update-server
+                            (web/ is its admin page; packaging/ builds both)
+docs/                       README pictures (test/readme_screenshot_test.dart
+                            makes screenshot.png)
+android/ ios/ linux/        platform runners
+macos/ windows/
 test/                       app tests (protocol, multi-node integration)
 ```
 

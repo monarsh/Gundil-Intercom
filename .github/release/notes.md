@@ -1,7 +1,7 @@
 Two-way (full-duplex) LAN intercom for **Android, iPhone, Windows, Mac, Linux, Raspberry Pi and Orange Pi PC**.
 Pick an intercom, press **Connect**, and both sides talk and listen at the same time until one hangs up.
 During a call, Android, Windows and Linux can turn on their camera for video. IP cameras (TP-Link Tapo and other RTSP cameras) can be watched live.
-Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no account.
+Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no account. Optionally, your own update server keeps every intercom on the version you choose.
 
 ## Which file do I need?
 
@@ -10,7 +10,7 @@ Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no acc
 | **Windows 10/11** | `app-Gundil_Intercom-VERSION-windows-x64-setup.exe` (installer). Portable alternative: `…-windows-x64-portable.zip` |
 | **Android** phone/tablet | `app-Gundil_Intercom-VERSION-android-arm64-v8a.apk` (most phones). If unsure: `…-android-universal.apk` |
 | **iPhone / iPad** (iOS 15+) | `app-Gundil_Intercom-VERSION-ios-unsigned.ipa`, installed with AltStore or Sideloadly (see below) |
-| **Mac** (macOS 10.15+, Apple silicon or Intel) | `app-Gundil_Intercom-VERSION-macos.zip` |
+| **Mac** (macOS 12+, Apple silicon or Intel) | `app-Gundil_Intercom-VERSION-macos.zip` |
 | **Linux PC** (x86_64) | `app-gundil-intercom-VERSION-x86_64.AppImage` (`chmod +x` it and run). Or `…-linux-x64.tar.gz` |
 | **Raspberry Pi 4/5** with desktop, 64-bit OS | `app-gundil-intercom-VERSION-aarch64.AppImage`. Or `…-linux-arm64.tar.gz` |
 | **Orange Pi PC**, Raspberry Pi with 32-bit OS, no screen | `app-gundil-intercom-node-VERSION-linux-arm.tar.gz` (headless node, see below) |
@@ -46,7 +46,7 @@ The app's files start with `app-`. `SHA256SUMS.txt` lists checksums for every fi
 
 ## Install notes
 
-- **Windows:** SmartScreen may warn about an unknown publisher (the installer isn't code-signed). Choose *More info → Run anyway*. The installer adds the firewall rule, a Start-menu entry and optional autostart. The app keeps running in the system tray.
+- **Windows:** SmartScreen may warn about an unknown publisher (the installer isn't code-signed). Choose *More info → Run anyway*. The installer adds the firewall rule, a Start-menu entry and optional autostart. The app keeps running in the system tray. Later versions install themselves from your update server (*Settings → Updates*).
 - **Android:** allow *Install unknown apps*. The APKs are signed with a development key, which is fine for installing yourself, not for the Play Store. For always-on use, turn on *Settings → Run in background*.
 - **iPhone / iPad:** Apple only allows signed apps, and this one isn't signed by a paid Apple Developer account. Install the `.ipa` with [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io) using your own (free) Apple ID; with a free Apple ID the app must be refreshed every 7 days (AltStore does this by itself). Allow *Local Network* and *Microphone* when asked. iPhones can't find intercoms automatically (iOS blocks the LAN broadcast without a special Apple permission): add them with **Add peer by IP**. To keep the iPhone answering with the screen locked, turn on *Settings → Run in background* (it plays silence in the background, which uses some battery).
 - **Mac:** unzip and move *Gundil Intercom* to Applications. The app isn't notarized by Apple, so the first time right-click it → *Open* → *Open* (or *System Settings → Privacy & Security → Open Anyway*). Allow *Microphone* and *Local Network* when asked.

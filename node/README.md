@@ -139,6 +139,8 @@ Edit `/etc/gundil-intercom/node.conf`, then
 | `password` | Intercom password. Calls are always encrypted; with a password only intercoms with the same password can connect. Set the same one on every device |
 | `peers` | Intercoms to add by IP if discovery doesn't reach them |
 | `tones` | Connect / hang-up / ring tones |
+| `internet`, `home-key`, `share-cameras` | Internet calls without a VPN, and sharing this LAN's cameras (see the main README) |
+| `updates`, `update-server` | Self-update from your update server (default on when the build has a server code). Set the server's policy for *Headless node* to *Install automatically*: the node replaces its program and restarts. Typing `update` (when run by hand) installs an offered version |
 
 Settings from earlier versions (`ptt-gpio`, `ptt-input`, ...) still work.
 Run `/opt/gundil-intercom/gundil-intercom-node --help` for all options.
