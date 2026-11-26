@@ -22,6 +22,7 @@ import '../internet/udp_link.dart';
 import '../peer_connection.dart';
 import '../protocol.dart';
 import '../secure_channel.dart';
+import 'release_signature.dart';
 
 class UpdateException implements Exception {
   UpdateException(this.message);
@@ -119,6 +120,9 @@ class UpdateOffer {
     this.local = false,
     this.downgrade = false,
     this.message,
+    this.asset,
+    this.sums,
+    this.sig,
   });
 
   /// "off", "ask" or "auto".
@@ -129,6 +133,10 @@ class UpdateOffer {
   /// A copy is on the server (otherwise only [url], on GitHub).
   final bool local;
   final bool downgrade;
+
+  /// The file's name in the release, the release's SHA256SUMS.txt and its
+  /// signature (release_signature.dart).
+  final String? asset, sums, sig;
 
   bool get hasUpdate => version != null && file != null && sha256 != null;
 
@@ -148,6 +156,9 @@ class UpdateOffer {
       local: t['local'] == true,
       downgrade: t['downgrade'] == true,
       message: m['message'] as String?,
+      asset: t['asset'] as String?,
+      sums: t['sums'] as String?,
+      sig: t['sig'] as String?,
     );
   }
 }
@@ -159,6 +170,7 @@ class UpdateClient {
     this.relays = defaultRelays,
     this.stunServers = defaultStunServers,
     this.githubFallback = true,
+    this.releaseKey = builtInReleaseKey,
   });
 
   final UpdateServerCode server;
@@ -168,6 +180,18 @@ class UpdateClient {
 
   /// Download from GitHub when the server can't send the file.
   final bool githubFallback;
+
+  /// Install only files of releases signed with this key (empty: no check).
+  final String releaseKey;
+
+  /// Why [offer]'s file must not be installed (null: fine).
+  String? problemWith(UpdateOffer offer) => releaseProblem(
+    key: releaseKey,
+    sums: offer.sums,
+    sig: offer.sig,
+    asset: offer.asset,
+    sha256: offer.sha256,
+  );
 
   /// How long to wait for the server's answer on the relays.
   static Duration answerTimeout = const Duration(seconds: 20);
@@ -182,7 +206,17 @@ class UpdateClient {
   Future<UpdateOffer> check() async {
     final s = await _Session.open(this);
     try {
-      return s.offer;
+      final offer = s.offer;
+      final problem = offer.hasUpdate ? problemWith(offer) : null;
+      if (problem != null) {
+        // Not offered at all: nothing unsigned is shown or installed.
+        _log('refused ${offer.version}: $problem');
+        return UpdateOffer(
+          mode: offer.mode,
+          message: 'version ${offer.version} refused: $problem',
+        );
+      }
+      return offer;
     } finally {
       s.close();
     }
@@ -197,6 +231,8 @@ class UpdateClient {
     void Function(int received, int total)? onProgress,
   }) async {
     if (!offer.hasUpdate) throw UpdateException('nothing to download');
+    final problem = problemWith(offer);
+    if (problem != null) throw UpdateException(problem);
     await dir.create(recursive: true);
     final name = offer.file!.split(RegExp(r'[\\/]')).last;
     final done = File('${dir.path}/$name');

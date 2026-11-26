@@ -85,6 +85,9 @@ type updateOffer struct {
 		URL       string `json:"url"`
 		Local     bool   `json:"local"`
 		Downgrade bool   `json:"downgrade"`
+		Asset     string `json:"asset"` // Its name in the release.
+		Sums      string `json:"sums"`  // The release's SHA256SUMS.txt…
+		Sig       string `json:"sig"`   // …and its signature (release_sig.go).
 	} `json:"target"`
 }
 
@@ -216,6 +219,9 @@ func (g *gateway) updateOnce(serverPub []byte, pkg string) error {
 	if offer.Mode != "auto" {
 		log.Printf("self-update: the server offers %s (%s); set it to install automatically for gateways", t.Version, offer.Mode)
 		return nil
+	}
+	if err := verifyRelease(releaseKey, t.Sums, t.Sig, t.Asset, t.SHA256); err != nil {
+		return fmt.Errorf("refused %s: %v", t.Version, err)
 	}
 	log.Printf("self-update: installing %s", t.Version)
 	dir, err := os.MkdirTemp("", "gundil-update")

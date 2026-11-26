@@ -388,9 +388,13 @@ admin page (TCP 8780).
   - **Policy:** per kind of device (Android, Windows, Mac, iPhone, Linux,
     headless node, gateway) the version to run (newest, or a specific one:
     older = **downgrade**) and the action: *Off*, *Ask* (the app shows it and
-    the user installs) or *Install automatically* (when no call is on).
+    the user installs) or *Install automatically* (when no call is on). Kinds
+    you haven't set get the **newest version with *Ask***: people choose
+    when to install, so a bad release can't spread by itself.
   - **Versions:** add releases from GitHub (optionally keep copies of the
-    files on the server), or upload release files.
+    files on the server), or upload release files (with the release's
+    `SHA256SUMS.txt` and `SHA256SUMS.txt.sig`). Each version shows whether
+    it is **signed**.
   - **Server:** the **server code**, the network check, the log, the password.
 - **Reset the portal:** `sudo gundil-reset-portal` gives a new admin account
   with a new one-time password (devices and versions are kept); `--all` also
@@ -406,6 +410,34 @@ Devices check in a minute after start and every 6 hours (Settings → Updates
 → Check now to ask at once). Every file is checked against the SHA-256 the
 server sends over the encrypted link; files come from the server when it
 keeps a copy, otherwise (or when that fails) from the GitHub release.
+
+**Other update servers.** Anyone can run their own server and paste its code
+into their apps (Settings → Updates → Update server; the gateway's
+`update_server`, the node's `update-server`); clearing it goes back to the
+built-in one.
+
+**Signed releases.** Each release's `SHA256SUMS.txt` is signed
+(`SHA256SUMS.txt.sig`, ECDSA P-256) with a key that only GitHub holds, and
+every app, headless node and gateway built with the public key installs a
+file only when the signature is good and the file's SHA-256 is in that
+signed list. So an update server, even a stolen one or someone else's, can
+only offer files of real releases; unsigned versions show as *not signed* on
+the server and are refused by the devices. Setting it up, once:
+
+1. On your computer: `tool/make_release_key.sh` makes the key and prints
+   what to add.
+2. GitHub, Settings → Secrets and variables → Actions: the **secret**
+   `GUNDIL_RELEASE_SIGNING_KEY` (the private key's PEM) and the **variable**
+   `GUNDIL_RELEASE_KEY` (the public key it printed).
+3. Keep the private key file offline as a backup and delete it from the
+   computer.
+
+From then on every release build signs its `SHA256SUMS.txt`
+(`tool/sign_release.sh`; the build fails if the secret is missing or doesn't
+match the public key) and builds the public key into the apps. The
+**sign-release** workflow (Actions → sign-release → Run, with a tag) signs an
+older release without rebuilding it, so devices can still go back to it.
+Builds without `GUNDIL_RELEASE_KEY` (forks, your own builds) don't check.
 
 | Device | Upgrade | Downgrade |
 |---|---|---|

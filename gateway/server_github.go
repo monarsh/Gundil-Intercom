@@ -6,8 +6,8 @@ package main
 // names, sizes, SHA-256 and download links; copies on request).
 
 import (
-	"bufio"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -80,29 +80,83 @@ func githubReleases(repo string) ([]ghRelease, error) {
 	return out, nil
 }
 
-// sha256Sums reads a release's SHA256SUMS.txt (for files without a digest).
-func sha256Sums(r ghRelease) map[string]string {
-	out := map[string]string{}
+// releaseSums: a release's SHA256SUMS.txt and its signature (base64; empty
+// when the release has none).
+func releaseSums(r ghRelease) (sums, sig string) {
 	for _, a := range r.Assets {
-		if a.Name != "SHA256SUMS.txt" && a.Name != "app-SHA256SUMS.txt" {
-			continue
-		}
-		req, _ := http.NewRequest("GET", a.URL, nil)
-		req.Header.Set("User-Agent", "gundil-update-server")
-		resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
-		if err != nil {
-			continue
-		}
-		sc := bufio.NewScanner(io.LimitReader(resp.Body, 1<<20))
-		for sc.Scan() {
-			f := strings.Fields(sc.Text())
-			if len(f) == 2 && len(f[0]) == 64 {
-				out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
+		switch a.Name {
+		case "SHA256SUMS.txt", "app-SHA256SUMS.txt":
+			if b, err := fetchSmall(a.URL, 1<<20); err == nil {
+				sums = string(b)
+			}
+		case "SHA256SUMS.txt.sig":
+			if b, err := fetchSmall(a.URL, 4096); err == nil {
+				sig = base64.StdEncoding.EncodeToString(b)
 			}
 		}
-		resp.Body.Close()
 	}
-	return out
+	if sums == "" {
+		sig = ""
+	}
+	return sums, sig
+}
+
+func fetchSmall(url string, limit int64) ([]byte, error) {
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "gundil-update-server")
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("download: %s", resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
+// signatureNote: how a release's signature looks to this server (logged).
+func signatureNote(sums, sig string) string {
+	switch {
+	case sig == "":
+		return "not signed"
+	case releaseKey == "":
+		return "signed"
+	}
+	pub, err := parseReleaseKey(releaseKey)
+	if err == nil {
+		err = verifySums(pub, sums, sig)
+	}
+	if err != nil {
+		return "signature NOT valid for this build's release key: " + err.Error()
+	}
+	return "signed (checked)"
+}
+
+// backfillSignatures fetches the signatures of releases added before they
+// were signed (or by an older server), so devices that check them can
+// update.
+func backfillSignatures(st *store, repo string) {
+	todo := st.unsignedGithubVersions()
+	if len(todo) == 0 {
+		return
+	}
+	rels, err := githubReleases(repo)
+	if err != nil {
+		log.Printf("release signatures: %v", err)
+		return
+	}
+	for _, v := range todo {
+		for _, r := range rels {
+			if compareVersions(strings.TrimPrefix(r.Tag, "v"), v) != 0 {
+				continue
+			}
+			if sums, sig := releaseSums(r); sig != "" {
+				st.setSignature(v, sums, sig)
+				log.Printf("release %s: %s", v, signatureNote(sums, sig))
+			}
+		}
+	}
 }
 
 // importJob: progress of copies being downloaded, for the web page.
@@ -156,7 +210,7 @@ func importRelease(st *store, repo, tag string, keep map[string]bool, job *impor
 		return errors.New("no such release with app files")
 	}
 	version := strings.TrimPrefix(rel.Tag, "v")
-	var sums map[string]string
+	sumsText, sig := releaseSums(*rel)
 	var files []versionFile
 	for _, a := range rel.Assets {
 		pkg, v := packageOf(a.Name)
@@ -165,10 +219,7 @@ func importRelease(st *store, repo, tag string, keep map[string]bool, job *impor
 		}
 		sum := strings.TrimPrefix(strings.ToLower(a.Digest), "sha256:")
 		if len(sum) != 64 {
-			if sums == nil {
-				sums = sha256Sums(*rel)
-			}
-			sum = sums[a.Name]
+			sum = sumsLookup(sumsText, a.Name)
 		}
 		if len(sum) != 64 {
 			log.Printf("import %s: %s has no SHA-256, skipped", tag, a.Name)
@@ -187,7 +238,10 @@ func importRelease(st *store, repo, tag string, keep map[string]bool, job *impor
 	if err := st.addFiles(version, "github", notes, files); err != nil {
 		return err
 	}
-	log.Printf("imported %s from GitHub: %d files", tag, len(files))
+	if sumsText != "" {
+		st.setSignature(version, sumsText, sig)
+	}
+	log.Printf("imported %s from GitHub: %d files, %s", tag, len(files), signatureNote(sumsText, sig))
 	var todo []versionFile
 	for _, f := range files {
 		if keep[familyOf(f.Package)] {

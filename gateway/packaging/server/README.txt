@@ -37,8 +37,12 @@ Then
    GitHub repository variable GUNDIL_UPDATE_SERVER so every build has it, or
    paste it in each app: Settings > Updates > Update server.
 2. Versions tab: add releases from GitHub (optionally keep copies here).
+   Each shows "signed" or "not signed": apps built with the release key
+   install only signed releases. Uploading files by hand? Upload the
+   release's SHA256SUMS.txt and SHA256SUMS.txt.sig with them.
 3. Policy tab: pick the version per kind of device and Off / Ask /
-   Install automatically. Devices tab: pin one device to a version.
+   Install automatically (not set: the newest version, Ask). Devices tab:
+   pin one device to a version.
 
 Reset the portal
 ----------------

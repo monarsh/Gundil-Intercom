@@ -56,8 +56,8 @@ jobs:
         run: |
           TAG="${{ inputs.release || github.ref_name }}"
           case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
-          gateway/packaging/build.sh "$V" "${{ vars.GUNDIL_UPDATE_SERVER }}"
-          gateway/packaging/build-server.sh "$V"
+          gateway/packaging/build.sh "$V" "${{ vars.GUNDIL_UPDATE_SERVER }}" "${{ vars.GUNDIL_RELEASE_KEY }}"
+          gateway/packaging/build-server.sh "$V" "${{ vars.GUNDIL_RELEASE_KEY }}"
           echo "V=$V" >> "$GITHUB_ENV"
       - name: OpenWrt 25 packages (apk), and a test install
         run: |
@@ -127,7 +127,7 @@ jobs:
         run: |
           TAG="${{ inputs.release || github.ref_name }}"
           case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
-          gateway/packaging/server/build_appimage.sh "$V"
+          gateway/packaging/server/build_appimage.sh "$V" "${{ vars.GUNDIL_RELEASE_KEY }}"
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-update-server-appimage-${{ matrix.runner }}
@@ -145,7 +145,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
       - run: tar -C build/linux/x64/release -czf gundil-intercom-linux-x64.tar.gz bundle
       - uses: actions/upload-artifact@v4
         with:
@@ -169,7 +169,7 @@ jobs:
           git clone --depth 1 --branch 3.47.9 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - run: flutter --version
-      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
       - run: tar -C build/linux/arm64/release -czf gundil-intercom-linux-arm64.tar.gz bundle
       - uses: actions/upload-artifact@v4
         with:
@@ -192,7 +192,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build windows --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build windows --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
       - name: Bundle Visual C++ runtime (app-local)
         shell: pwsh
         run: |
@@ -258,8 +258,8 @@ jobs:
             echo "ANDROID_KEY_ALIAS=${KEY_ALIAS:-gundil}"
             echo "ANDROID_KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
           } >> "$GITHUB_ENV"
-      - run: flutter build apk --release --split-per-abi --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
-      - run: flutter build apk --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}   # universal APK (all CPUs)
+      - run: flutter build apk --release --split-per-abi --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
+      - run: flutter build apk --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}   # universal APK (all CPUs)
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-intercom-android
@@ -281,9 +281,11 @@ jobs:
       - run: tool/build_node.sh arm
         env:
           GUNDIL_UPDATE_SERVER: ${{ vars.GUNDIL_UPDATE_SERVER }}
+          GUNDIL_RELEASE_KEY: ${{ vars.GUNDIL_RELEASE_KEY }}
       - run: tool/build_node.sh arm64
         env:
           GUNDIL_UPDATE_SERVER: ${{ vars.GUNDIL_UPDATE_SERVER }}
+          GUNDIL_RELEASE_KEY: ${{ vars.GUNDIL_RELEASE_KEY }}
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-intercom-node-linux-arm
@@ -306,7 +308,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build ios --release --no-codesign --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build ios --release --no-codesign --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
@@ -335,7 +337,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build macos --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build macos --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }} --dart-define=GUNDIL_RELEASE_KEY=${{ vars.GUNDIL_RELEASE_KEY }}
       - name: Package app
         run: |
           set -euo pipefail
@@ -445,6 +447,11 @@ jobs:
           fi
           sed "s/VERSION/$V/g" .github/release/notes.md >> release-notes.md
           ls -la dist
+      - name: Sign SHA256SUMS.txt (the apps install only signed releases)
+        env:
+          GUNDIL_RELEASE_SIGNING_KEY: ${{ secrets.GUNDIL_RELEASE_SIGNING_KEY }}
+          GUNDIL_RELEASE_KEY: ${{ vars.GUNDIL_RELEASE_KEY }}
+        run: tool/sign_release.sh dist
       - name: Point the tag at this commit (rebuilding an existing release)
         if: github.event_name == 'workflow_dispatch'
         run: |

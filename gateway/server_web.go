@@ -9,6 +9,7 @@ package main
 
 import (
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
@@ -245,6 +246,7 @@ func (w *webServer) apiUpload(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var added []string
+	var sums, sig string // A release's SHA256SUMS.txt and .sig, uploaded with its files.
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
@@ -256,6 +258,16 @@ func (w *webServer) apiUpload(rw http.ResponseWriter, r *http.Request) {
 		}
 		name := filepath.Base(part.FileName())
 		if name == "" || name == "." {
+			continue
+		}
+		switch name {
+		case "SHA256SUMS.txt", "app-SHA256SUMS.txt":
+			b, _ := io.ReadAll(io.LimitReader(part, 1<<20))
+			sums = string(b)
+			continue
+		case "SHA256SUMS.txt.sig":
+			b, _ := io.ReadAll(io.LimitReader(part, 4096))
+			sig = base64.StdEncoding.EncodeToString(b)
 			continue
 		}
 		pkg, v := packageOf(name)
@@ -283,7 +295,32 @@ func (w *webServer) apiUpload(rw http.ResponseWriter, r *http.Request) {
 		added = append(added, name)
 		log.Printf("web: uploaded %s (%d KB)", name, f.Size/1024)
 	}
-	writeJSONResp(rw, 200, map[string]any{"ok": true, "files": added})
+	out := map[string]any{"ok": true, "files": added}
+	switch {
+	case sums != "" && sig != "":
+		// The versions the list names (and that are here).
+		var signed []string
+		seen := map[string]bool{}
+		for _, line := range strings.Split(sums, "\n") {
+			f := strings.Fields(line)
+			if len(f) != 2 {
+				continue
+			}
+			if _, v := packageOf(strings.TrimPrefix(f[1], "*")); v != "" && !seen[v] {
+				seen[v] = true
+				if w.st.setSignature(v, sums, sig) == nil {
+					signed = append(signed, v)
+					log.Printf("web: signature uploaded for %s: %s", v, signatureNote(sums, sig))
+				}
+			}
+		}
+		out["signed"] = signed
+	case sums != "" || sig != "":
+		out["warning"] = "Upload SHA256SUMS.txt and SHA256SUMS.txt.sig together."
+	case len(added) > 0 && releaseKey != "":
+		out["warning"] = "Devices only install signed releases: also upload the release's SHA256SUMS.txt and SHA256SUMS.txt.sig."
+	}
+	writeJSONResp(rw, 200, out)
 }
 
 func (w *webServer) apiVersionDelete(rw http.ResponseWriter, r *http.Request) {

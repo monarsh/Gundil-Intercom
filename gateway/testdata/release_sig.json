@@ -1,0 +1,8 @@
+{
+  "comment": "TEST key only (made with openssl like the release build); not the real release key.",
+  "key": "BBxnCQ3NBMkmu0KHUTAfs5XjYrCdrnSkPSZ+tuRJaqEvS1UFaOz3EY6x1TaYMLe0KmVfQ8fRzHBiofZj50MnVSw=",
+  "sums": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  app-Gundil_Intercom-9.9.9-android-arm64-v8a.apk\n3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d  app-gundil-gateway-9.9.9-linux-x86_64.tar.gz\n2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6  server-gundil-update-server-9.9.9-linux-x86_64.tar.gz\n",
+  "sig": "MEUCIGE1rypxSbuBCCbGvAUiz07TLiqfKocD6FPG4tGQIx/eAiEAiJe7wSwdfQ4RUc5eRal4BD6KW/SZh1hVZz40TRlhtF0=",
+  "asset": "app-gundil-gateway-9.9.9-linux-x86_64.tar.gz",
+  "sha256": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+}

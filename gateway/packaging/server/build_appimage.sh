@@ -3,9 +3,11 @@
 # aarch64): one file that runs on any desktop Linux, e.g.
 #   ./gundil-update-server-1.9.1-x86_64.AppImage          (runs the server)
 #   ./gundil-update-server-1.9.1-x86_64.AppImage code     (prints the server code)
-# Data: ~/.local/share/gundil-update-server. Usage: build_appimage.sh VERSION
+# Data: ~/.local/share/gundil-update-server.
+# Usage: build_appimage.sh VERSION [RELEASE_KEY]
 set -e
 VERSION=${1:?version}
+RELEASE_KEY=${2:-}
 cd "$(dirname "$0")/../.."
 case "$(uname -m)" in
 x86_64) ARCH=x86_64 ;;
@@ -14,7 +16,7 @@ aarch64|arm64) ARCH=aarch64 ;;
 esac
 APPDIR=build/appimage-server/GundilUpdateServer.AppDir
 rm -rf "$APPDIR" && mkdir -p "$APPDIR/usr/bin"
-CGO_ENABLED=0 go build -tags updateserver -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+CGO_ENABLED=0 go build -tags updateserver -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.releaseKey=$RELEASE_KEY" \
 	-o "$APPDIR/usr/bin/gundil-update-server" .
 cp -r web "$APPDIR/usr/bin/web"
 cat > "$APPDIR/AppRun" <<'RUN'

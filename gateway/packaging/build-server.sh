@@ -7,6 +7,7 @@
 # Usage: packaging/build-server.sh VERSION
 set -e
 VERSION=${1:?version}
+RELEASE_KEY=${2:-} # Checks the signatures of the releases it imports (release_sig.go).
 cd "$(dirname "$0")/.."
 DIST=dist-server
 STAGE=build/apk-server
@@ -17,7 +18,7 @@ S=packaging/server
 
 build() { # os arch arm out
 	CGO_ENABLED=0 GOOS=$1 GOARCH=$2 GOARM=$3 GOMIPS=softfloat \
-		go build -tags updateserver -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$4" .
+		go build -tags updateserver -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.releaseKey=$RELEASE_KEY" -o "$4" .
 }
 
 conf_example() {

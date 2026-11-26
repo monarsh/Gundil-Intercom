@@ -46,6 +46,11 @@ type familyPolicy struct {
 	Mode   string `json:"mode"`
 }
 
+// defaultPolicy for a kind of device the admin hasn't set: offer the
+// newest version, and let people choose (Ask) rather than install by
+// itself everywhere.
+var defaultPolicy = familyPolicy{Target: "latest", Mode: "ask"}
+
 type versionFile struct {
 	Name    string `json:"name"`  // Without the app-/server- prefix.
 	Asset   string `json:"asset"` // As in the release.
@@ -62,6 +67,8 @@ type versionEntry struct {
 	Added   time.Time     `json:"added"`
 	Notes   string        `json:"notes,omitempty"`
 	Files   []versionFile `json:"files"`
+	Sums    string        `json:"sums,omitempty"` // The release's SHA256SUMS.txt…
+	Sig     string        `json:"sig,omitempty"`  // …and its signature (base64; release_sig.go).
 }
 
 type store struct {
@@ -213,7 +220,7 @@ func (s *store) policyFor(family string) familyPolicy {
 	defer s.mu.Unlock()
 	p, ok := s.policy[family]
 	if !ok {
-		return familyPolicy{Mode: "off"}
+		return defaultPolicy
 	}
 	return p
 }
@@ -225,7 +232,7 @@ func (s *store) allPolicy() map[string]familyPolicy {
 	for _, f := range families {
 		p, ok := s.policy[f.ID]
 		if !ok {
-			p = familyPolicy{Mode: "off"}
+			p = defaultPolicy
 		}
 		out[f.ID] = p
 	}
@@ -354,4 +361,40 @@ func (s *store) localFile(name string) (string, *versionFile) {
 		}
 	}
 	return "", nil
+}
+
+// setSignature stores a release's signed SHA256SUMS.txt for [version].
+func (s *store) setSignature(version, sums, sig string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.findVersion(version)
+	if e == nil {
+		return errors.New("no such version")
+	}
+	e.Sums, e.Sig = sums, sig
+	return writeJSON(s.path("versions.json"), s.versions)
+}
+
+// signatureOf: [version]'s signed SHA256SUMS.txt, if any.
+func (s *store) signatureOf(version string) (sums, sig string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := s.findVersion(version); e != nil {
+		return e.Sums, e.Sig
+	}
+	return "", ""
+}
+
+// unsignedGithubVersions: versions from GitHub without a signature (added
+// before the releases were signed, or by an older server).
+func (s *store) unsignedGithubVersions() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, e := range s.versions {
+		if e.Source == "github" && e.Sig == "" {
+			out = append(out, e.Version)
+		}
+	}
+	return out
 }

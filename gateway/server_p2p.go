@@ -241,9 +241,13 @@ func (s *updateServer) decide(d *device) map[string]any {
 		out["message"] = fmt.Sprintf("version %s has no file for %s", target, d.Package)
 		return out
 	}
+	sums, sig := s.st.signatureOf(target)
 	out["target"] = map[string]any{"version": target, "file": f.Name, "size": f.Size,
 		"sha256": f.SHA256, "url": f.URL, "local": f.Local,
-		"downgrade": compareVersions(target, d.Version) < 0}
+		"downgrade": compareVersions(target, d.Version) < 0,
+		// The signed list, so the device can check the file is a release's
+		// (release_sig.go).
+		"asset": sumsAsset(sums, f.Asset, f.Name), "sums": sums, "sig": sig}
 	return out
 }
 

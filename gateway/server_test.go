@@ -4,7 +4,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -246,10 +250,15 @@ func TestPolicyAndDecisions(t *testing.T) {
 	if tg["version"] != "1.9.0" || tg["downgrade"] != true {
 		t.Fatalf("pin: %v", tg)
 	}
-	// Families with no policy are off.
+	// Families with no policy are offered the newest version, to ask.
 	gw := wt.st.checkIn(device{ID: "gateway-0001", Name: "Router", Package: "gateway-linux-arm64", Version: "1.9.0"})
-	if m := srv.decide(gw); m["mode"] != "off" || m["target"] != nil {
+	if m := srv.decide(gw); m["mode"] != "ask" || m["target"] == nil || m["target"].(map[string]any)["version"] != "1.9.1" {
 		t.Fatalf("gateway without policy: %v", m)
+	}
+	// Off when the admin says so.
+	wt.do("POST", "/api/policy", map[string]any{"gateway": map[string]any{"target": "latest", "mode": "off"}})
+	if m := srv.decide(gw); m["mode"] != "off" || m["target"] != nil {
+		t.Fatalf("gateway turned off: %v", m)
 	}
 	// Removing a version.
 	if code, _ := wt.do("DELETE", "/api/versions/1.9.0", nil); code != 200 {
@@ -355,4 +364,88 @@ func TestImportKeepCopies(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("no copy kept; job: %v", wt.w.job.snapshot())
+}
+
+// A signed release from GitHub: the server keeps its SHA256SUMS.txt and
+// signature, sends them with the offer, and a device with the release key
+// accepts the file; tampering is refused.
+func TestSignedReleaseOffer(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pub := base64.StdEncoding.EncodeToString(elliptic.Marshal(elliptic.P256(), key.X, key.Y))
+	file := []byte("pretend apk 1.9.3")
+	sum := sha256.Sum256(file)
+	asset := "app-Gundil_Intercom-1.9.3-android-arm64-v8a.apk"
+	sums := hex.EncodeToString(sum[:]) + "  " + asset + "\n"
+	h := sha256.Sum256([]byte(sums))
+	sig, _ := ecdsa.SignASN1(rand.Reader, key, h[:])
+
+	var gh *httptest.Server
+	gh = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sums"):
+			rw.Write([]byte(sums))
+		case strings.HasSuffix(r.URL.Path, "/sig"):
+			rw.Write(sig)
+		default:
+			fmt.Fprintf(rw, `[{"tag_name":"v1.9.3","assets":[`+
+				`{"name":"%s","size":%d,"browser_download_url":"%s/a.apk","digest":"sha256:%x"},`+
+				`{"name":"SHA256SUMS.txt","size":%d,"browser_download_url":"%s/sums"},`+
+				`{"name":"SHA256SUMS.txt.sig","size":%d,"browser_download_url":"%s/sig"}]}]`,
+				asset, len(file), gh.URL, sum, len(sums), gh.URL, len(sig), gh.URL)
+		}
+	}))
+	defer gh.Close()
+	oldAPI, oldKey := githubAPI, releaseKey
+	githubAPI, releaseKey = gh.URL, pub
+	defer func() { githubAPI, releaseKey = oldAPI, oldKey }()
+
+	wt := newWebTest(t)
+	wt.signIn()
+	if code, out := wt.do("POST", "/api/versions/import", map[string]any{"tag": "v1.9.3"}); code != 200 {
+		t.Fatalf("import: %d %v", code, out)
+	}
+	if gotSums, gotSig := wt.st.signatureOf("1.9.3"); gotSums != sums || gotSig != base64.StdEncoding.EncodeToString(sig) {
+		t.Fatalf("signature not kept: %q %q", gotSums, gotSig)
+	}
+	if note := signatureNote(wt.st.signatureOf("1.9.3")); note != "signed (checked)" {
+		t.Fatalf("note: %s", note)
+	}
+	phone := wt.st.checkIn(device{ID: "phone-000002", Name: "Phone", Package: "android-arm64-v8a", Version: "1.9.2"})
+	info := wt.w.srv.decide(phone)
+	tg, ok := info["target"].(map[string]any)
+	if !ok || info["mode"] != "ask" {
+		t.Fatalf("offer: %v", info)
+	}
+	str := func(k string) string { s, _ := tg[k].(string); return s }
+	if err := verifyRelease(pub, str("sums"), str("sig"), str("asset"), str("sha256")); err != nil {
+		t.Fatalf("the device would refuse a signed release: %v (%v)", err, tg)
+	}
+	other := strings.Repeat("1", 64)
+	if verifyRelease(pub, str("sums"), str("sig"), str("asset"), other) == nil {
+		t.Fatal("another file accepted")
+	}
+	// Uploading another file under that version: not in the signed list.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("files", "app-Gundil_Intercom-1.9.4-android-arm64-v8a.apk")
+	fw.Write([]byte("not a release"))
+	mw.Close()
+	req, _ := http.NewRequest("POST", wt.ts.URL+"/api/versions/upload", &buf)
+	req.Header.Set("X-Gundil", "1")
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := wt.c.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatal("upload")
+	}
+	var up map[string]any
+	json.NewDecoder(resp.Body).Decode(&up)
+	resp.Body.Close()
+	if w, _ := up["warning"].(string); !strings.Contains(w, "signed") {
+		t.Fatalf("no warning for an unsigned upload: %v", up)
+	}
+	phone = wt.st.checkIn(device{ID: "phone-000002", Name: "Phone", Package: "android-arm64-v8a", Version: "1.9.3"})
+	tg = wt.w.srv.decide(phone)["target"].(map[string]any)
+	if tg["version"] != "1.9.4" || verifyRelease(pub, str("sums"), str("sig"), str("asset"), str("sha256")) == nil {
+		t.Fatalf("an unsigned upload must be refused by the device: %v", tg)
+	}
 }

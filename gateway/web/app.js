@@ -302,7 +302,9 @@ function renderVersions() {
       try { await api('DELETE', 'versions/' + v.version); await loadVersions(); } catch (er) { toast(er.message); }
     });
     box.append(el('details', { class: 'card ver' },
-      el('summary', {}, el('b', {}, v.version), el('span', { class: 'muted small' }, `${v.files.length} files, ${local} kept here · ${v.source} · added ${ago(v.added)}`), del),
+      el('summary', {}, el('b', {}, v.version),
+        el('span', { class: v.sig ? 'tag up' : 'tag down', title: v.sig ? 'The release\'s SHA256SUMS.txt is signed: devices can check every file.' : 'No signature: devices that check signatures won\'t install this version. Add it again from GitHub, or upload its SHA256SUMS.txt and SHA256SUMS.txt.sig.' }, v.sig ? 'signed' : 'not signed'),
+        el('span', { class: 'muted small' }, `${v.files.length} files, ${local} kept here · ${v.source} · added ${ago(v.added)}`), del),
       el('ul', {}, v.files.map((f) => el('li', {}, f.asset, ' ', el('span', { class: 'muted' }, `${size(f.size)} · ${f.local ? 'kept here' : 'from GitHub'}`))))));
   }
 }
@@ -353,7 +355,8 @@ async function upload(ev) {
   $('#up-status').textContent = 'Uploading…';
   try {
     const r = await api('POST', 'versions/upload', fd);
-    $('#up-status').textContent = 'Added: ' + r.files.join(', ');
+    $('#up-status').textContent = 'Added: ' + (r.files.length ? r.files.join(', ') : 'no release files') +
+      (r.signed && r.signed.length ? ` · signature for ${r.signed.join(', ')}` : '') + (r.warning ? ` · ${r.warning}` : '');
     ev.target.reset();
     await loadVersions();
   } catch (e) {

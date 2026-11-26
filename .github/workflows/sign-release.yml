@@ -1,0 +1,44 @@
+name: sign-release
+
+# Signs an existing release without rebuilding it: downloads its
+# SHA256SUMS.txt, signs it with the secret GUNDIL_RELEASE_SIGNING_KEY
+# (tool/sign_release.sh) and attaches SHA256SUMS.txt.sig. For releases made
+# before the signing key existed, so apps that check signatures can still
+# install (or downgrade to) them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag to sign, e.g. v1.10.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download SHA256SUMS.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir dist
+          gh release download "${{ inputs.release }}" --pattern SHA256SUMS.txt --dir dist
+      - name: Sign it
+        env:
+          GUNDIL_RELEASE_SIGNING_KEY: ${{ secrets.GUNDIL_RELEASE_SIGNING_KEY }}
+          GUNDIL_RELEASE_KEY: ${{ vars.GUNDIL_RELEASE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$GUNDIL_RELEASE_SIGNING_KEY" ] || { echo "::error::No secret GUNDIL_RELEASE_SIGNING_KEY"; exit 1; }
+          tool/sign_release.sh dist
+      - name: Attach SHA256SUMS.txt.sig
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "${{ inputs.release }}" dist/SHA256SUMS.txt.sig --clobber
