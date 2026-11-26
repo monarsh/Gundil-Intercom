@@ -37,11 +37,13 @@ type webServer struct {
 	log  *logRing
 	job  importJob
 	self *selfUpdater
+	// afterKeyImport restarts the server with an imported key (tests replace it).
+	afterKeyImport func()
 }
 
 func newWebServer(cfg *serverConfig, st *store, srv *updateServer, lr *logRing) *webServer {
 	return &webServer{portal: newPortal(st, cfg.ScryptN, "gundil_server_session"), cfg: cfg, st: st, srv: srv, log: lr,
-		self: newSelfUpdater(cfg.Repo, cfg.WebDir)}
+		self: newSelfUpdater(cfg.Repo, cfg.WebDir), afterKeyImport: restartForUpdate}
 }
 
 // ---------------------------------------------------------------- routes
@@ -63,6 +65,8 @@ func (w *webServer) handler() http.Handler {
 	m.HandleFunc("POST /api/versions/upload", w.auth(false, w.apiUpload))
 	m.HandleFunc("DELETE /api/versions/{version}", w.auth(false, w.apiVersionDelete))
 	m.HandleFunc("GET /api/log", w.auth(false, w.apiLog))
+	m.HandleFunc("POST /api/server-key/export", w.auth(false, w.apiKeyExport))
+	m.HandleFunc("POST /api/server-key/import", w.auth(false, w.apiKeyImport))
 	m.HandleFunc("GET /api/self-update", w.auth(false, w.apiSelfUpdate))
 	m.HandleFunc("POST /api/self-update/check", w.auth(false, w.apiSelfUpdateCheck))
 	m.HandleFunc("POST /api/self-update/install", w.auth(false, w.apiSelfUpdateInstall))

@@ -420,6 +420,15 @@ admin page (TCP 8780).
   folder), which must be changed at the first sign-in before anything else.
   The page **signs out after 30 minutes without activity**; 5 wrong passwords
   lock the sign-in for 5 minutes.
+- **Move the server** to another machine with the **same server code**:
+  the code is the public half of the server key, and the apps trust only
+  the server holding the key, so the key moves. Old server: **Server tab →
+  Export server key** (asks for the admin password again; the key is a
+  secret). New server: **Import a server key** → it restarts with the same
+  code, and the old key is kept as `keys.json.old-…`. Or
+  `gundil-update-server export-key` / `import-key -` with the server
+  stopped. Devices, versions and the policy don't move: add the versions
+  again; the devices check in by themselves.
 - **Update the server itself:** **Server tab → Update this server** shows
   its version and the newest release on GitHub (looked up when the tab
   opens; a new one is also noted in the log once a day). **Update to X**

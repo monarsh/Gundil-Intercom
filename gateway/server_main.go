@@ -44,6 +44,10 @@ func main() {
 Commands:
   run            run the server (the default)
   code           print the server code (built into the apps)
+  export-key     print the server key (secret), to move the server to
+                 another machine with the same server code
+  import-key KEY use that server key here (KEY, or "-" to read it from
+                 stdin); stop the server first, start it afterwards
   reset-admin    start the admin account afresh: a new one-time password,
                  which must be changed at the first sign-in. With --all also
                  forget devices, policy and versions; --new-key also makes a
@@ -72,6 +76,16 @@ Commands:
 		st, err := openStore(cfg.DataDir)
 		exitOn(err)
 		fmt.Println(updateCodeText(st.serverKey().pub))
+		return
+	case "export-key":
+		cfg, err := loadServerConfig(*cfgPath)
+		exitOn(err)
+		exitOn(exportKeyCommand(cfg.DataDir))
+		return
+	case "import-key":
+		cfg, err := loadServerConfig(*cfgPath)
+		exitOn(err)
+		exitOn(importKeyCommand(cfg.DataDir, flag.Arg(1)))
 		return
 	case "reset-admin":
 		cfg, err := loadServerConfig(*cfgPath)

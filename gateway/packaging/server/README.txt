@@ -54,6 +54,18 @@ restarts (sign in again). Devices aren't affected; offer the new version
 to them on the Versions tab. Linux installs made before this button can't replace
 their own files: run install.sh (or deploy.sh) of the new version once.
 
+Move the server to another machine (same server code)
+-----------------------------------------------------
+The server code is the public half of the server key; apps trust only the
+server holding the key. Old server: Server tab > Export server key (asks
+for the admin password; the key is secret). New server: Server tab >
+Import a server key, then it restarts with the same code. Or on the
+command line (stop the server first):
+    gundil-update-server export-key            on the old machine
+    gundil-update-server import-key -          on the new one (paste it)
+Devices, versions and policy stay behind: add the versions again on the
+new server; the devices check in by themselves.
+
 Uninstall
 ---------
 From your computer over SSH (Linux, OpenWrt, Windows):

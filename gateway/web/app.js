@@ -422,6 +422,75 @@ async function loadServer() {
   await loadLog();
 }
 
+// --------------------------------------------------- move (server key)
+
+async function exportKey() {
+  const pw = prompt('Your admin password, to show the server key:');
+  if (!pw) return;
+  try {
+    const r = await api('POST', 'server-key/export', { password: pw });
+    $('#key-text').textContent = r.key;
+    $('#key-out').hidden = false;
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function hideKey() {
+  $('#key-text').textContent = '';
+  $('#key-out').hidden = true;
+}
+
+function downloadKey() {
+  const text = $('#key-text').textContent;
+  const a = el('a', { href: URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain' })), download: 'gundil-server-key.txt' });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+let keyCheckTimer = null;
+function checkKey() {
+  clearTimeout(keyCheckTimer);
+  const key = $('#f-key-import').key.value.trim();
+  const out = $('#key-check');
+  if (!key) { out.textContent = ''; return; }
+  keyCheckTimer = setTimeout(async () => {
+    try {
+      const r = await api('POST', 'server-key/import', { key, check: true });
+      out.textContent = r.same ? 'This server already has that key.' : `Server code with this key: ${r.code}`;
+    } catch (e) {
+      out.textContent = e.message;
+    }
+  }, 300);
+}
+
+async function importKey(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  $('#key-error').textContent = '';
+  let check;
+  try {
+    check = await api('POST', 'server-key/import', { key: f.key.value, check: true });
+  } catch (e) {
+    $('#key-error').textContent = e.message;
+    return;
+  }
+  if (check.same) { $('#key-error').textContent = 'This server already has that key.'; return; }
+  if (!confirm(`Replace this server's key? Its server code becomes\n${check.code}\nApps that know the current code lose this server. The old key is kept in the data folder (keys.json.old-…). The server restarts.`)) return;
+  try {
+    const r = await api('POST', 'server-key/import', { key: f.key.value, password: f.password.value });
+    f.reset();
+    $('#key-check').textContent = '';
+    if (r.restart) {
+      toast('Imported. Restarting with the new key…');
+      setTimeout(() => showLogin(`The server restarted with the imported key (${r.code}). Sign in again.`), 4000);
+    }
+  } catch (e) {
+    $('#key-error').textContent = e.message;
+  }
+}
+
 // ------------------------------------------------------- server update
 
 let suLatest = null;
@@ -609,6 +678,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#change-pw').addEventListener('click', () => showPassword(false));
   $('#log-refresh').addEventListener('click', loadLog);
   $('#su-check').addEventListener('click', checkSelf);
+  $('#key-export').addEventListener('click', exportKey);
+  $('#key-hide').addEventListener('click', hideKey);
+  $('#key-download').addEventListener('click', downloadKey);
+  $('#key-copy').addEventListener('click', async () => {
+    if (await copyText($('#key-text').textContent)) toast('Copied');
+    else { selectText($('#key-text')); toast('Press Ctrl+C (or Cmd+C) to copy the selected key.'); }
+  });
+  $('#f-key-import').key.addEventListener('input', checkKey);
+  $('#f-key-import').addEventListener('submit', importKey);
   $('#su-install').addEventListener('click', installSelf);
   for (const e of ['click', 'keydown', 'scroll', 'mousemove', 'touchstart']) {
     document.addEventListener(e, activity, { passive: true, capture: true });
