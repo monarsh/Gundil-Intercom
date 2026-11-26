@@ -241,7 +241,15 @@ settings you give (`--home-key` or `--password`, which it asks for,
 `--name`, `--share-cameras yes|no`, `--update-server CODE`; other settings are
 kept), restarts the gateway and runs the network check. Running it again
 upgrades. From the next release it is also attached to each release as
-`app-gundil-gateway-VERSION-deploy.sh`.
+`app-gundil-gateway-deploy.sh` (no version in its name), so this always gets
+the current one:
+
+```sh
+curl -fLO https://github.com/monarsh/Gundil-Intercom/releases/latest/download/app-gundil-gateway-deploy.sh
+chmod +x app-gundil-gateway-deploy.sh
+./app-gundil-gateway-deploy.sh root@192.168.1.1                  # newest release
+./app-gundil-gateway-deploy.sh --version 1.9.2 root@192.168.1.1  # a given one
+```
 
 By hand:
 
