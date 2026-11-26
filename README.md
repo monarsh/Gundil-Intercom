@@ -721,9 +721,11 @@ Releases use semantic versioning, `MAJOR.MINOR.PATCH`, tagged `vX.Y.Z`:
 - **MAJOR** (1.x → 2.0.0): breaking changes: older intercoms can't connect,
   saved settings must be reset, a platform is dropped.
 
-Every released change gets a new number; a version is never rebuilt, because
-self-update compares versions and devices on that number would never get the
-rebuild. The Android build number (`+N` in `pubspec.yaml`) goes up by one with
+Fixes are collected and released together, not one number per fix: the
+version is raised only when a release is actually made. A release can be
+rebuilt with more fixes under the same number shortly after it came out, but
+self-update compares version numbers, so devices that already installed the
+first build must install the rebuild by hand. The Android build number (`+N` in `pubspec.yaml`) goes up by one with
 every release. Test builds are `vX.Y.Z-test.N` (the update server ignores
 them). The version is kept equal in `pubspec.yaml`,
 `packages/intercom_core/pubspec.yaml` and
