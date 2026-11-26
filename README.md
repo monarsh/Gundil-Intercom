@@ -708,6 +708,26 @@ background**.
   unknown devices from connecting at all.
   It is meant for trusted local networks.
 
+## Versioning
+
+Releases use semantic versioning, `MAJOR.MINOR.PATCH`, tagged `vX.Y.Z`:
+
+- **PATCH** (1.9.1 → 1.9.2): fixes, small tweaks, wording, packaging.
+- **MINOR** (1.9.x → 1.10.0): new features or settings that still work with
+  older intercoms.
+- **MAJOR** (1.x → 2.0.0): breaking changes: older intercoms can't connect,
+  saved settings must be reset, a platform is dropped.
+
+Every released change gets a new number; a version is never rebuilt, because
+self-update compares versions and devices on that number would never get the
+rebuild. The Android build number (`+N` in `pubspec.yaml`) goes up by one with
+every release. Test builds are `vX.Y.Z-test.N` (the update server ignores
+them). The version is kept equal in `pubspec.yaml`,
+`packages/intercom_core/pubspec.yaml` and
+`packages/intercom_core/lib/src/version.dart` (checked by
+`test/version_test.dart`), with notes in
+`.github/release/changelog/vX.Y.Z.md`.
+
 ## Project layout
 
 ```
