@@ -112,6 +112,17 @@
         <button id="change-pw">Change password</button>
       </div>
     </div>
+    <div class="card" id="su-card">
+      <h3>Update this server</h3>
+      <div id="su-notice" class="notice" hidden></div>
+      <dl id="su-info"></dl>
+      <details id="su-notes-box" hidden><summary>What's new</summary><pre id="su-notes"></pre></details>
+      <div class="row">
+        <button id="su-check">Check now</button>
+        <button id="su-install" class="primary" hidden>Update</button>
+      </div>
+      <p class="muted small">Takes the newest release from GitHub (<code id="su-repo"></code>). The file must match the release's signed checksum list before anything is replaced. The server then restarts on the new version (sign in again). Devices and apps aren't affected: add the new version on the Versions tab to offer it to them.</p>
+    </div>
     <div class="card">
       <h3>Log</h3>
       <pre id="log"></pre>

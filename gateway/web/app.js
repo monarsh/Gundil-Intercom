@@ -382,7 +382,88 @@ async function loadServer() {
     const svg = await api('GET', 'qr.svg', undefined, { background: true });
     $('#qr').src = URL.createObjectURL(svg);
   } catch (_) { /* optional */ }
+  $('#su-repo').textContent = st.repo || 'GitHub';
+  const su = await loadSelf();
+  // Look at GitHub when the tab opens, at most once an hour.
+  if (!su.busy && !su.problem && (!su.lastCheck || Date.now() - Date.parse(su.lastCheck) > 3600e3)) {
+    checkSelf(true);
+  }
   await loadLog();
+}
+
+// ------------------------------------------------------- server update
+
+let suLatest = null;
+
+async function loadSelf(background) {
+  const u = await api('GET', 'self-update', undefined, { background });
+  const checked = u.lastCheck && !u.lastCheck.startsWith('0001') ? new Date(u.lastCheck).toLocaleString() : 'not yet';
+  const busy = u.busy === 'installing' ? 'installing…' : u.busy === 'checking' ? 'checking GitHub…' : null;
+  const list = [['This server', u.version], ['Newest release', u.latest || '—'], ['Last check', checked],
+    ['Result', busy || u.result || '']];
+  $('#su-info').replaceChildren(...list.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+  suLatest = u.available ? u.latest : null;
+  const inst = $('#su-install');
+  inst.hidden = !suLatest;
+  inst.disabled = !!u.busy;
+  inst.textContent = suLatest ? `Update to ${suLatest}` : 'Update';
+  $('#su-check').disabled = !!u.busy || !!u.problem;
+  $('#su-notes-box').hidden = !(u.available && u.notes);
+  $('#su-notes').textContent = u.notes || '';
+  const n = $('#su-notice');
+  n.hidden = !u.problem;
+  n.textContent = u.problem || '';
+  return u;
+}
+
+async function checkSelf(quiet) {
+  const b = $('#su-check');
+  b.disabled = true;
+  b.textContent = 'Checking…';
+  try {
+    await api('POST', 'self-update/check', undefined, { background: quiet === true });
+  } catch (e) {
+    if (quiet !== true) toast(e.message);
+  }
+  b.textContent = 'Check now';
+  await loadSelf(true).catch(() => {});
+}
+
+async function installSelf() {
+  if (!suLatest || !confirm(`Update this server to ${suLatest} now? It restarts afterwards; devices keep working.`)) return;
+  const target = suLatest;
+  try {
+    await api('POST', 'self-update/install');
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  const n = $('#su-notice');
+  n.hidden = false;
+  n.textContent = `Downloading and checking ${target}… The server restarts when it's done; this page then asks you to sign in again.`;
+  $('#su-install').disabled = $('#su-check').disabled = true;
+  // Wait for the restart: the page goes away, then comes back signed out.
+  let wentAway = false;
+  const t = setInterval(async () => {
+    try {
+      const r = await fetch('/api/session', { headers: { 'X-Gundil': '1', 'X-Background': '1' } });
+      const s = await r.json();
+      if (!s.signedIn) {
+        clearInterval(t);
+        showLogin(wentAway ? `The server restarted on version ${target}. Sign in again.` : 'Signed out.');
+      } else if (!wentAway) {
+        const u = await loadSelf(true).catch(() => null);
+        if (u && !u.busy && !(u.result || '').startsWith('Installed')) {
+          clearInterval(t); // Done without installing: say why.
+          n.hidden = false;
+          n.textContent = u.result || 'Not installed.';
+        }
+      }
+    } catch (_) {
+      wentAway = true;
+      n.textContent = 'Restarting…';
+    }
+  }, 3000);
 }
 
 function renderNet(st) {
@@ -492,6 +573,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#change-pw').addEventListener('click', () => showPassword(false));
   $('#log-refresh').addEventListener('click', loadLog);
+  $('#su-check').addEventListener('click', checkSelf);
+  $('#su-install').addEventListener('click', installSelf);
   for (const e of ['click', 'keydown', 'scroll', 'mousemove', 'touchstart']) {
     document.addEventListener(e, activity, { passive: true, capture: true });
   }

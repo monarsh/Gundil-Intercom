@@ -13,6 +13,8 @@ StateDirectoryMode=0700
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+# Server tab → Update replaces the program and the web page here.
+ReadWritePaths=/opt/gundil-update-server
 
 [Install]
 WantedBy=multi-user.target

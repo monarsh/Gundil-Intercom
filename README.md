@@ -398,6 +398,16 @@ admin page (TCP 8780).
   folder), which must be changed at the first sign-in before anything else.
   The page **signs out after 30 minutes without activity**; 5 wrong passwords
   lock the sign-in for 5 minutes.
+- **Update the server itself:** **Server tab → Update this server** shows
+  its version and the newest release on GitHub (looked up when the tab
+  opens; a new one is also noted in the log once a day). **Update to X**
+  downloads this platform's file, checks it against the release's signed
+  `SHA256SUMS.txt` (builds with the release key refuse anything else),
+  replaces the program and its web page and restarts; sign in again. It
+  never updates by itself, and the devices aren't affected: offer the new
+  version to them on the Versions tab. On Linux the service user now owns
+  `/opt/gundil-update-server`; installs made before this button run `install.sh` or
+  `deploy.sh` of the new version once, then the button works.
   - **Devices:** every device that checked in: name, platform, version, last
     seen; **pin** one device to a version.
   - **Policy:** per kind of device (Android, Windows, Mac, iPhone, Linux,

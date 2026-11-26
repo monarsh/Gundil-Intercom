@@ -34,9 +34,13 @@ install -m 755 gundil-update-server "$HOME_DIR/gundil-update-server"
 rm -rf "$HOME_DIR/web"
 cp -r web "$HOME_DIR/web"
 chmod -R a+rX "$HOME_DIR/web"
-install -m 755 reset-portal.sh "$HOME_DIR/reset-portal.sh"
+# The service user owns its folder, so Server tab → Update can replace the
+# program and the web page.
+chown -R gundil-update: "$HOME_DIR"
 ln -sf "$HOME_DIR/gundil-update-server" /usr/local/bin/gundil-update-server
-ln -sf "$HOME_DIR/reset-portal.sh" /usr/local/sbin/gundil-reset-portal
+# A root-owned copy, not in the folder the service user may change.
+rm -f /usr/local/sbin/gundil-reset-portal "$HOME_DIR/reset-portal.sh"
+install -m 755 -o root -g root reset-portal.sh /usr/local/sbin/gundil-reset-portal
 [ -f "$CONF" ] || install -m 644 server.conf.example "$CONF"
 install -m 644 gundil-update-server.service /etc/systemd/system/gundil-update-server.service
 systemctl daemon-reload

@@ -44,6 +44,16 @@ Then
    Install automatically (not set: the newest version, Ask). Devices tab:
    pin one device to a version.
 
+Update the server itself
+------------------------
+Server tab > Update this server: shows this version and the newest release
+on GitHub (checked when the tab opens, and once a day in the log). "Update
+to X" downloads this platform's file, checks it against the release's
+signed SHA256SUMS.txt, replaces the program and its web page, and
+restarts (sign in again). Devices aren't affected; offer the new version
+to them on the Versions tab. Linux installs made before this button can't replace
+their own files: run install.sh (or deploy.sh) of the new version once.
+
 Reset the portal
 ----------------
     sudo gundil-reset-portal            new admin account (one-time password)

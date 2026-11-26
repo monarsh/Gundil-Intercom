@@ -10,19 +10,12 @@ package main
 // headless gateway has nobody to ask.
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -139,12 +132,6 @@ func (g *gateway) runUpdates() {
 			return
 		}
 	}
-}
-
-// restartForUpdate exits so the service manager starts the new program.
-func restartForUpdate() {
-	time.Sleep(500 * time.Millisecond)
-	os.Exit(75) // Not 0: systemd (Restart=on-failure), procd and Windows restart it.
 }
 
 // updateStatus: what the web page shows about self-update.
@@ -391,124 +378,6 @@ func receiveFile(c *peerConn, name, dst string, size int64) error {
 			return errors.New("the link closed")
 		case <-time.After(30 * time.Second):
 			return errors.New("the server stopped sending")
-		}
-	}
-}
-
-func fetchURL(url, dst string) error {
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "gundil-gateway")
-	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("download: %s", resp.Status)
-	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
-}
-
-func fileSHA256(p string) (string, error) {
-	f, err := os.Open(p)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	io.Copy(h, f)
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// installGatewayFile takes the program out of the release file (tar.gz or
-// zip) and puts it in place of the running one.
-func installGatewayFile(archive string) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exe, _ = filepath.EvalSymlinks(exe)
-	want := "gundil-gateway"
-	if runtime.GOOS == "windows" {
-		want += ".exe"
-	}
-	staged := exe + ".new"
-	if err := extractOne(archive, want, staged); err != nil {
-		return err
-	}
-	os.Chmod(staged, 0o755)
-	if runtime.GOOS == "windows" {
-		// A running .exe can be renamed but not overwritten.
-		old := exe + ".old"
-		os.Remove(old)
-		if err := os.Rename(exe, old); err != nil {
-			os.Remove(staged)
-			return err
-		}
-	}
-	if err := os.Rename(staged, exe); err != nil {
-		os.Remove(staged)
-		return err
-	}
-	return nil
-}
-
-func extractOne(archive, name, dst string) error {
-	write := func(r io.Reader) error {
-		out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(out, io.LimitReader(r, 100<<20))
-		if cerr := out.Close(); err == nil {
-			err = cerr
-		}
-		return err
-	}
-	if strings.HasSuffix(archive, ".zip") {
-		z, err := zip.OpenReader(archive)
-		if err != nil {
-			return err
-		}
-		defer z.Close()
-		for _, f := range z.File {
-			if filepath.Base(f.Name) == name {
-				r, err := f.Open()
-				if err != nil {
-					return err
-				}
-				defer r.Close()
-				return write(r)
-			}
-		}
-		return errors.New("no program in the update")
-	}
-	f, err := os.Open(archive)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			return errors.New("no program in the update")
-		}
-		if err != nil {
-			return err
-		}
-		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == name {
-			return write(tr)
 		}
 	}
 }

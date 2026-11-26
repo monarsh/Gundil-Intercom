@@ -142,6 +142,7 @@ func serve(cfgPath string) {
 	if !cfg.TestNoNet {
 		go srv.run()
 		go backfillSignatures(st, cfg.Repo)
+		go web.self.runChecks()
 	}
 	hs := &http.Server{Handler: web.handler(), ReadHeaderTimeout: 10 * time.Second}
 	exitOn(hs.Serve(ln))

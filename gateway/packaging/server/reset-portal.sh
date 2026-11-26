@@ -39,8 +39,9 @@ else
 	CONF=/etc/gundil-update-server.conf
 	systemctl stop gundil-update-server
 	if id gundil-update >/dev/null 2>&1; then
-		su -s /bin/sh gundil-update -c "\"$BIN\" --config=\"$CONF\" $ALL $KEY reset-admin" 2>/dev/null ||
-			"$BIN" --config="$CONF" $ALL $KEY reset-admin
+		# As the service user: it owns the program (Update replaces it), so
+		# root doesn't run it.
+		su -s /bin/sh gundil-update -c "\"$BIN\" --config=\"$CONF\" $ALL $KEY reset-admin"
 	else
 		"$BIN" --config="$CONF" $ALL $KEY reset-admin
 	fi

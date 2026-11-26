@@ -31,15 +31,17 @@ const maxUpload = 400 << 20
 // webServer: the shared sign-in portal (webadmin.go) plus the server's API.
 type webServer struct {
 	*portal
-	cfg *serverConfig
-	st  *store
-	srv *updateServer
-	log *logRing
-	job importJob
+	cfg  *serverConfig
+	st   *store
+	srv  *updateServer
+	log  *logRing
+	job  importJob
+	self *selfUpdater
 }
 
 func newWebServer(cfg *serverConfig, st *store, srv *updateServer, lr *logRing) *webServer {
-	return &webServer{portal: newPortal(st, cfg.ScryptN, "gundil_server_session"), cfg: cfg, st: st, srv: srv, log: lr}
+	return &webServer{portal: newPortal(st, cfg.ScryptN, "gundil_server_session"), cfg: cfg, st: st, srv: srv, log: lr,
+		self: newSelfUpdater(cfg.Repo, cfg.WebDir)}
 }
 
 // ---------------------------------------------------------------- routes
@@ -61,6 +63,9 @@ func (w *webServer) handler() http.Handler {
 	m.HandleFunc("POST /api/versions/upload", w.auth(false, w.apiUpload))
 	m.HandleFunc("DELETE /api/versions/{version}", w.auth(false, w.apiVersionDelete))
 	m.HandleFunc("GET /api/log", w.auth(false, w.apiLog))
+	m.HandleFunc("GET /api/self-update", w.auth(false, w.apiSelfUpdate))
+	m.HandleFunc("POST /api/self-update/check", w.auth(false, w.apiSelfUpdateCheck))
+	m.HandleFunc("POST /api/self-update/install", w.auth(false, w.apiSelfUpdateInstall))
 	m.Handle("/", w.static())
 	return securityHeaders(m)
 }
@@ -334,4 +339,41 @@ func (w *webServer) apiVersionDelete(rw http.ResponseWriter, r *http.Request) {
 
 func (w *webServer) apiLog(rw http.ResponseWriter, r *http.Request) {
 	writeJSONResp(rw, 200, map[string]any{"lines": w.log.lines()})
+}
+
+// Server tab → Update: this server's own version (server_selfupdate.go).
+func (w *webServer) apiSelfUpdate(rw http.ResponseWriter, r *http.Request) {
+	writeJSONResp(rw, 200, w.self.status())
+}
+
+func (w *webServer) apiSelfUpdateCheck(rw http.ResponseWriter, r *http.Request) {
+	if err := w.self.check(); err != nil {
+		writeJSONResp(rw, 502, map[string]any{"error": err.Error(), "status": w.self.status()})
+		return
+	}
+	writeJSONResp(rw, 200, w.self.status())
+}
+
+// apiSelfUpdateInstall answers at once (202) and installs in the
+// background; the page waits for the restarted server.
+func (w *webServer) apiSelfUpdateInstall(rw http.ResponseWriter, r *http.Request) {
+	if w.self.status().Busy != "" {
+		fail(rw, 409, "An update check or install is already running.")
+		return
+	}
+	log.Printf("web: server update requested from %s", clientIP(r))
+	go func() {
+		installed, err := w.self.install()
+		if err != nil {
+			log.Printf("server update: %v", err)
+		} else if installed {
+			w.self.afterInstall(mustExe(w.self))
+		}
+	}()
+	writeJSONResp(rw, 202, map[string]any{"ok": true})
+}
+
+func mustExe(u *selfUpdater) string {
+	exe, _ := u.exe()
+	return exe
 }
