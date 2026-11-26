@@ -869,7 +869,8 @@ pre-release with the Android APKs, the gateway and the update server, named
 like a release, so the deploy scripts install it with `--version
 X.Y.Z-test.N`. Test builds aren't signed; the update server, self-update and
 "newest release" all skip them, and a test build counts as older than its
-release. The version is kept equal in `pubspec.yaml`,
+release. When the real release is published, the build deletes the test
+pre-releases (and their tags) of that version and older ones. The version is kept equal in `pubspec.yaml`,
 `packages/intercom_core/pubspec.yaml` and
 `packages/intercom_core/lib/src/version.dart` (checked by
 `test/version_test.dart`), with notes in

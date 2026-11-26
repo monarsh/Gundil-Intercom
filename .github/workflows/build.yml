@@ -509,3 +509,27 @@ jobs:
           # Latest = the newest release by date, so rebuilding an older one
           # doesn't make it Latest.
           make_latest: legacy
+      - name: Remove the test pre-releases of this version and older ones
+        # Test builds (vX.Y.Z-test.N) are only for trying a version on real
+        # devices; once the real release is out they go, with their tags.
+        # Newer versions' tests stay. A failure here only warns.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.release || github.ref_name }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          gh release list --limit 200 --json tagName,isPrerelease \
+            -q '.[] | select(.isPrerelease) | .tagName' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$' |
+            while read -r t; do
+              base="${t#v}"; base="${base%%-*}"
+              # Keep tests of newer versions: base must sort at or before V.
+              if [ "$(printf '%s\n%s\n' "$base" "$V" | sort -V | tail -n 1)" = "$V" ]; then
+                echo "Removing test pre-release $t"
+                gh release delete "$t" --yes --cleanup-tag ||
+                  echo "::warning::Could not remove $t (delete it on GitHub by hand)"
+              fi
+            done
