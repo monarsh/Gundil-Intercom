@@ -195,6 +195,8 @@ func TestGatewayWebOnlyFromTheLAN(t *testing.T) {
 	for addr, want := range map[string]int{
 		"203.0.113.9:5000": 403, "[2001:db8::1]:5000": 403,
 		"192.168.1.20:5000": 200, "10.1.2.3:5000": 200, "127.0.0.1:5000": 200, "[fe80::1]:5000": 200,
+		"100.101.102.103:5000": 200, // Tailscale / CGNAT VPN.
+		"100.128.0.1:5000":     403, // Just outside 100.64.0.0/10.
 	} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = addr
@@ -364,4 +366,53 @@ func TestGatewayWebUpdates(t *testing.T) {
 	}
 	g, _, _ := gt.w.current()
 	g.stop()
+}
+
+// web_allow opens the page to more networks (a VPN's), at once after Save;
+// too wide a network is refused.
+func TestGatewayWebAllow(t *testing.T) {
+	gt := newGWTest(t)
+	gt.signIn()
+	go gt.w.runGateways(gt.cfg) // Applies saved settings, as in the program.
+	h := gt.w.handler()
+	from := func(addr string) int {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = addr
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if c := from("203.0.113.9:5000"); c != 403 {
+		t.Fatalf("before web_allow: %d", c)
+	}
+	settings := map[string]any{"authMode": "home_key", "homeKey": pairingText(make([]byte, 32)), "name": "Gate",
+		"webAllow": "203.0.113.0/24, 2001:db8::/32"}
+	if code, out := gt.do("POST", "/api/settings", settings); code != 200 {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	b, _ := os.ReadFile(gt.cfg)
+	if !strings.Contains(string(b), "web_allow = 203.0.113.0/24, 2001:db8::/32") {
+		t.Fatalf("not saved:\n%s", b)
+	}
+	waitFor(t, "the new settings", func() bool { return from("203.0.113.9:5000") == 200 })
+	if c := from("[2001:db8::5]:5000"); c != 200 {
+		t.Errorf("IPv6 in web_allow: %d", c)
+	}
+	if c := from("198.51.100.1:5000"); c != 403 {
+		t.Errorf("not in web_allow: %d", c)
+	}
+	_, out := gt.do("GET", "/api/settings", nil)
+	if out["webAllow"] != "203.0.113.0/24, 2001:db8::/32" {
+		t.Errorf("settings show %v", out["webAllow"])
+	}
+	for _, bad := range []string{"0.0.0.0/0", "8.0.0.0/7", "::/0", "2000::/3", "not-a-network"} {
+		settings["webAllow"] = bad
+		if code, _ := gt.do("POST", "/api/settings", settings); code != 400 {
+			t.Errorf("web_allow %q accepted: %d", bad, code)
+		}
+	}
+	if got, err := parseWebAllow([]string{" 10.8.0.7 ", "fd00::1", "10.8.0.0/24"}); err != nil ||
+		strings.Join(got, ",") != "10.8.0.7/32,fd00::1/128,10.8.0.0/24" {
+		t.Errorf("parseWebAllow: %v %v", got, err)
+	}
 }

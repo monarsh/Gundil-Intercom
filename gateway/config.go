@@ -28,6 +28,7 @@ type config struct {
 	UpdateDelay  int      // Tests: seconds before the first check.
 	Web          bool     // The settings web page (not on OpenWrt: LuCI).
 	WebListen    string   // Its address, e.g. 0.0.0.0:8781.
+	WebAllow     []string // More networks the web page answers (besides the LAN).
 	Path         string   // This file.
 	AnyHost      bool     // Tests only.
 	ExtraSubnets []string // Private networks to forward to besides the own LANs.
@@ -160,6 +161,12 @@ func parseConfig(path string) (*config, error) {
 			if v != "" {
 				c.WebListen = v
 			}
+		case "web_allow":
+			n, err := parseWebAllow(list())
+			if err != nil {
+				return nil, fmt.Errorf("web_allow: %v (in %s)", err, path)
+			}
+			c.WebAllow = n
 		case "test_update_delay":
 			fmt.Sscan(v, &c.UpdateDelay)
 		case "check_hosts":
@@ -298,9 +305,14 @@ share_cameras = true
 # extra_subnets = 192.168.2.0/24, 10.20.0.0/16
 
 # The settings web page (not on OpenWrt, which has LuCI):
-# http://<this device>:8781, only from the LAN. web = off turns it off.
+# http://<this device>:8781, only from the LAN (and Tailscale / CGNAT VPN
+# addresses, 100.64.0.0/10). web = off turns it off.
 # web = on
 # web_listen = 0.0.0.0:8781
+# Optional: more networks it may be opened from, e.g. your VPN's subnet
+# (comma separated; a single address or a network, IPv4 or IPv6). Only
+# networks you trust: the page controls the gateway, over plain HTTP.
+# web_allow = 10.8.0.0/24, fd7a:115c:a1e0::/48
 
 # Optional: other Nostr relays (comma separated).
 # relays = wss://relay.damus.io, wss://nos.lol

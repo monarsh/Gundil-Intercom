@@ -160,20 +160,76 @@ func (w *gatewayWeb) handler() http.Handler {
 		rw.Write(sharedStyle)
 	})
 	m.Handle("/", files)
-	return lanOnly(securityHeaders(m))
+	return w.lanOnly(securityHeaders(m))
 }
 
-// lanOnly: the page answers only this computer and the local networks.
-func lanOnly(h http.Handler) http.Handler {
+// cgnatRange: Tailscale and carrier-grade NAT VPN addresses
+// (100.64.0.0/10), local enough to open the page by default.
+var cgnatRange = func() *net.IPNet { _, n, _ := net.ParseCIDR("100.64.0.0/10"); return n }()
+
+// webAllowed: this computer, the local networks, 100.64.0.0/10 and the
+// networks in web_allow.
+func webAllowed(ip net.IP, allow []string) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnatRange.Contains(ip) {
+		return true
+	}
+	for _, a := range allow {
+		if _, n, err := net.ParseCIDR(a); err == nil && n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// lanOnly: the page answers only webAllowed addresses; web_allow is read
+// from the current settings, so a change applies at once.
+func (w *gatewayWeb) lanOnly(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		ip := net.ParseIP(host)
-		if err != nil || ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
-			http.Error(rw, "The gateway's web page can only be opened from the local network.", http.StatusForbidden)
+		var allow []string
+		if _, cfg, _ := w.current(); cfg != nil {
+			allow = cfg.WebAllow
+		}
+		if err != nil || !webAllowed(net.ParseIP(host), allow) {
+			http.Error(rw, "The gateway's web page can only be opened from the local network "+
+				"(or a network listed in web_allow in its settings file).", http.StatusForbidden)
 			return
 		}
 		h.ServeHTTP(rw, r)
 	})
+}
+
+// parseWebAllow checks web_allow: addresses or networks, IPv4 or IPv6, not
+// wider than /8 (IPv4) or /16 (IPv6), so it can't open the page to the
+// whole internet by mistake.
+func parseWebAllow(list []string) ([]string, error) {
+	var out []string
+	for _, s := range list {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if !strings.Contains(s, "/") {
+			if ip := net.ParseIP(s); ip != nil && ip.To4() != nil {
+				s += "/32"
+			} else {
+				s += "/128"
+			}
+		}
+		ip, n, err := net.ParseCIDR(s)
+		if err != nil {
+			return nil, fmt.Errorf("%s: not an address or network like 10.8.0.0/24", s)
+		}
+		ones, _ := n.Mask.Size()
+		if (ip.To4() != nil && ones < 8) || (ip.To4() == nil && ones < 16) {
+			return nil, fmt.Errorf("%s is too wide (at most /8 for IPv4, /16 for IPv6)", s)
+		}
+		out = append(out, n.String())
+	}
+	return out, nil
 }
 
 // serveWeb listens in the background; the URL(s) go to the log.
@@ -271,6 +327,7 @@ func (w *gatewayWeb) apiSettings(rw http.ResponseWriter, r *http.Request) {
 		"relays": relays, "defaultRelays": strings.Join(defaultRelays, ", "),
 		"updates": c.Updates, "updateServer": c.UpdateServer, "checkHosts": strings.Join(c.CheckHosts, ", "),
 		"extraSubnets": strings.Join(c.ExtraSubnets, ", "),
+		"webAllow":     strings.Join(c.WebAllow, ", "),
 	})
 }
 
@@ -297,14 +354,15 @@ type settingsChange struct {
 	UpdateServer string `json:"updateServer"`
 	CheckHosts   string `json:"checkHosts"`
 	ExtraSubnets string `json:"extraSubnets"` // Comma separated private networks.
+	WebAllow     string `json:"webAllow"`     // More networks that may open this page.
 }
 
 // validate turns a change into the lines to write, or says what's wrong.
 func (m settingsChange) validate(cur *config) ([][2]string, error) {
 	clean := func(s string) string { return strings.TrimSpace(s) }
-	m.Name, m.HomeKey, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets =
-		clean(m.Name), clean(m.HomeKey), clean(m.Relays), clean(m.UpdateServer), clean(m.CheckHosts), clean(m.ExtraSubnets)
-	for _, v := range []string{m.Password, m.HomeKey, m.Name, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets} {
+	m.Name, m.HomeKey, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets, m.WebAllow =
+		clean(m.Name), clean(m.HomeKey), clean(m.Relays), clean(m.UpdateServer), clean(m.CheckHosts), clean(m.ExtraSubnets), clean(m.WebAllow)
+	for _, v := range []string{m.Password, m.HomeKey, m.Name, m.Relays, m.UpdateServer, m.CheckHosts, m.ExtraSubnets, m.WebAllow} {
 		if strings.ContainsAny(v, "\r\n") {
 			return nil, errors.New("No line breaks, please.")
 		}
@@ -384,6 +442,11 @@ func (m settingsChange) validate(cur *config) ([][2]string, error) {
 		return nil, fmt.Errorf("Other networks: %v", err)
 	}
 	out = append(out, [2]string{"extra_subnets", strings.Join(subnets, ", ")})
+	allow, err := parseWebAllow(strings.Split(m.WebAllow, ","))
+	if err != nil {
+		return nil, fmt.Errorf("Also open this page from: %v", err)
+	}
+	out = append(out, [2]string{"web_allow", strings.Join(allow, ", ")})
 	return out, nil
 }
 

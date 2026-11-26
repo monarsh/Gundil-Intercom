@@ -98,6 +98,8 @@
       <p class="muted small">Optional. Check network also tries these (address:port, comma separated).</p>
       <label>Nostr relays <input name="relays"></label>
       <p class="muted small">Optional. Comma separated; empty uses the built-in list.</p>
+      <label>Also open this page from <input name="webAllow" placeholder="10.8.0.0/24"></label>
+      <p class="muted small">Optional. This page answers the local network and Tailscale / carrier VPN addresses (100.64.0.0/10). Add your VPN's network here if it uses other addresses (comma separated; an address or a network, IPv4 or IPv6). Only networks you trust: this page controls the gateway, over plain HTTP.</p>
       <label class="check"><input type="checkbox" name="updates"> Update itself from the update server</label>
       <label>Update server <input name="updateServer" placeholder="GUNDIL-UPDATE-…"></label>
       <p class="muted small">Optional: the server code from your update server. Empty uses the one built into this gateway, if any. The server decides the version.</p>

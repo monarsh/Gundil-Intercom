@@ -328,6 +328,15 @@ password; set the intercom password or home key there (or in
 `http://<device>:8781`, from the local network only (it refuses addresses
 from the internet). OpenWrt keeps its LuCI page instead.
 
+The page controls the gateway (password, home key, camera sharing, updates)
+and is plain HTTP, so it answers only this device, the private LAN ranges
+and Tailscale / carrier VPN addresses (`100.64.0.0/10`). Away from home, use
+your VPN into home or an SSH tunnel (`ssh -L 8781:localhost:8781 user@device`,
+then `http://localhost:8781`). If your VPN gives other addresses, list its
+network in **Settings → Also open this page from** (or `web_allow = 10.8.0.0/24`
+in the config; IPv4 or IPv6, at most /8 or /16 wide). Only networks you
+trust; never forward port 8781 from the internet.
+
 ![The gateway's web page: the home key, name, camera sharing and updates](docs/gateway-web.png)
 
 - **Sign-in** like the update server: one `admin` account with a
