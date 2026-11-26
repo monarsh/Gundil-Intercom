@@ -11,9 +11,7 @@ package main
 //   files/<version>/<name>  copies kept on this server
 
 import (
-	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,14 +23,6 @@ import (
 type serverKeys struct {
 	ServerKey string `json:"serverKey"`
 	NostrKey  string `json:"nostrKey"`
-}
-
-type adminAccount struct {
-	Hash       string    `json:"hash"`
-	Salt       string    `json:"salt"`
-	N          int       `json:"n"`
-	MustChange bool      `json:"mustChange"`
-	Changed    time.Time `json:"changed"`
 }
 
 type device struct {
@@ -123,35 +113,6 @@ func (s *store) path(name string) string { return filepath.Join(s.dir, name) }
 
 func (s *store) filePath(version, name string) string {
 	return filepath.Join(s.dir, "files", version, filepath.Base(name))
-}
-
-func readJSON(path string, v any) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, v)
-}
-
-// writeJSON writes atomically, readable by the owner only.
-func writeJSON(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-func randomHex(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return hex.EncodeToString(b)
 }
 
 func (s *store) serverKey() keyPair {

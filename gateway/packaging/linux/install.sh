@@ -30,17 +30,33 @@ ln -s /opt/gundil-gateway/gundil-gateway /usr/local/bin/gundil-gateway
 if [ ! -f "$CONF" ]; then
 	install -m 640 gundil-gateway.conf.example "$CONF"
 fi
+# The service may change its settings (web page), not create other files.
 chown root:gundil-gateway "$CONF"
-chmod 640 "$CONF"
+chmod 660 "$CONF"
 install -m 644 gundil-gateway.service /etc/systemd/system/gundil-gateway.service
 systemctl daemon-reload
-if grep -Eq '^(password *= *.{10,}|home_key *= *[^ ]+)' "$CONF"; then
+web_on() { ! grep -Eq '^ *web *= *(off|false|no|0) *$' "$CONF"; }
+if grep -Eq '^(password *= *.{10,}|home_key *= *[^ ]+)' "$CONF" || web_on; then
 	systemctl enable --now gundil-gateway
 	systemctl restart gundil-gateway
-	echo "Running. Check it: gundil-gateway --check --config=$CONF"
-	echo "Log: journalctl -u gundil-gateway -f"
+	echo "Running. Log: journalctl -u gundil-gateway -f"
 else
 	systemctl enable gundil-gateway
 	echo "Installed. Now set the intercom password (or home_key) in $CONF, then:"
 	echo "  sudo systemctl start gundil-gateway"
+	exit 0
+fi
+if web_on; then
+	port=$(sed -n 's/^ *web_listen *= *.*:\([0-9]*\) *$/\1/p' "$CONF" | tail -n 1)
+	port=${port:-8781}
+	addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+	echo "Web page: http://${addr:-<this device>}:$port (from the local network)"
+	i=0
+	while [ ! -f /var/lib/gundil-gateway/web-initial-password.txt ] && [ $i -lt 10 ]; do sleep 0.5; i=$((i + 1)); done
+	if [ -f /var/lib/gundil-gateway/web-initial-password.txt ]; then
+		echo "Sign in as \"admin\" with the one-time password: $(cat /var/lib/gundil-gateway/web-initial-password.txt)"
+		echo "(you'll choose your own password first)."
+	fi
+	grep -Eq '^(password *= *.{10,}|home_key *= *[^ ]+)' "$CONF" ||
+		echo "Then set the intercom password or the home key there (or in $CONF)."
 fi

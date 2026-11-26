@@ -12,8 +12,8 @@ StateDirectory=gundil-gateway
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-# Self-update replaces the program here.
-ReadWritePaths=/opt/gundil-gateway
+# Self-update replaces the program here; the web page saves the settings.
+ReadWritePaths=/opt/gundil-gateway /etc/gundil-gateway.conf
 
 [Install]
 WantedBy=multi-user.target

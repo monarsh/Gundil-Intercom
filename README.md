@@ -139,6 +139,9 @@ call, Android, Windows and Linux can also turn on their **camera** for video.
 - **Self-update (1.9.1+)**: your own update server (no public IP needed)
   decides which version every intercom runs, upgrade or downgrade, from an
   admin web page. See *Self-update* below.
+- **Gateway web page**: `gundil-gateway` on Linux, Raspberry Pi, Orange Pi
+  and Windows has its own settings page (`http://<device>:8781`, LAN only),
+  like LuCI on OpenWrt. See *Cameras from outside (gateway)* below.
 - **Battery saving on phones**: while no call is on, Android and iPhone slow
   down their keep-alives, more so on mobile data or in Low Power Mode.
 - **Reliable**: a member that stops responding (crash, Wi-Fi lost) is dropped
@@ -294,14 +297,47 @@ Upgrades the same way; your settings in `/etc/config/gundil` are kept.
 Remove with `apk del luci-app-gundil-gateway gundil-gateway`.
 
 **Raspberry Pi / Orange Pi / Linux PC:** `tar xzf gundil-gateway-*-linux-*.tar.gz`,
-`cd` into it, `sudo ./install.sh`, set `password` in `/etc/gundil-gateway.conf`,
-`sudo systemctl start gundil-gateway`. Log: `journalctl -u gundil-gateway -f`.
+`cd` into it, `sudo ./install.sh`. It starts the gateway and prints the
+address of its **web page** and a one-time password (below); set the intercom
+password or home key there. Or set `password` / `home_key` in
+`/etc/gundil-gateway.conf` and `sudo systemctl restart gundil-gateway`.
+Log: `journalctl -u gundil-gateway -f`.
 
 **Windows:** unzip, run `gundil-gateway.exe install` in an Administrator
-prompt (it writes `C:\ProgramData\Gundil\gateway.conf`), set the password
-there, run `install` again. It runs as the *GundilGateway* service, starts
-with Windows, and logs to the Event Viewer. `gundil-gateway.exe uninstall`
-removes it.
+prompt. It runs as the *GundilGateway* service, starts with Windows, logs to
+the Event Viewer, and prints the address of its **web page** with a one-time
+password; set the intercom password or home key there (or in
+`C:\ProgramData\Gundil\gateway.conf`, then restart the service).
+`gundil-gateway.exe uninstall` removes it.
+
+**Web page (Linux, Raspberry Pi, Orange Pi, Windows):**
+`http://<device>:8781`, from the local network only (it refuses addresses
+from the internet). OpenWrt keeps its LuCI page instead.
+
+![The gateway's web page: the home key, name, camera sharing and updates](docs/gateway-web.png)
+
+- **Sign-in** like the update server: one `admin` account with a
+  **one-time password** after installing (in the log, and in
+  `web-initial-password.txt` next to the gateway's state:
+  `/var/lib/gundil-gateway/` on Linux, `C:\ProgramData\Gundil\` on
+  Windows), which must be changed at the first sign-in; signed out after 30
+  minutes without activity; locked for 5 minutes after 5 wrong passwords.
+- **Status:** running or waiting for the settings, version, key (the home
+  key's fingerprint, to compare with the app), relays, NAT type, the shared
+  LAN; **Check network** and **Restart**.
+- **Settings:** intercom password or home key (never shown again once
+  saved), name, camera sharing, cameras to check, relays, self-update and the
+  update server. **Save and restart** writes them into the config file
+  (comments kept) and restarts the gateway in place; the page stays signed
+  in.
+- **Log:** the gateway's recent log.
+- **Lost the password?** On the device: `sudo gundil-gateway reset-admin`
+  (Windows: `gundil-gateway.exe reset-admin` as Administrator). It removes
+  the account and restarts the gateway, which makes a new one-time password.
+- `web = off` in the config turns the page off; `web_listen = 0.0.0.0:8781`
+  changes its address. Upgrading a gateway installed before the page: run
+  `install.sh` (or `deploy-gateway.sh`) again once, so the page may save its
+  settings.
 
 `gundil-gateway --check` shows the relays, the NAT type and the LAN it
 shares; `check_hosts = 192.168.1.50:554` in the config also tries a camera.

@@ -8,163 +8,44 @@ package main
 // passwords. The front end (web/) is plain HTML + JS calling /api/.
 
 import (
-	"crypto/rand"
-	"crypto/subtle"
 	"embed"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/crypto/scrypt"
 	"rsc.io/qr"
 )
 
 //go:embed web
 var embeddedWeb embed.FS
 
-const (
-	sessionIdle   = 30 * time.Minute
-	maxFailures   = 5
-	lockDuration  = 5 * time.Minute
-	minPassword   = 10
-	sessionCookie = "gundil_session"
-	maxUpload     = 400 << 20
-)
+const maxUpload = 400 << 20
 
-type session struct {
-	last time.Time
-}
-
+// webServer: the shared sign-in portal (webadmin.go) plus the server's API.
 type webServer struct {
+	*portal
 	cfg *serverConfig
 	st  *store
 	srv *updateServer
 	log *logRing
 	job importJob
-
-	mu       sync.Mutex
-	sessions map[string]*session
-	failures int
-	lockedTo time.Time
 }
 
 func newWebServer(cfg *serverConfig, st *store, srv *updateServer, lr *logRing) *webServer {
-	return &webServer{cfg: cfg, st: st, srv: srv, log: lr, sessions: map[string]*session{}}
-}
-
-// ----------------------------------------------------------- the account
-
-func hashPassword(pw, salt string, n int) string {
-	k, err := scrypt.Key([]byte(pw), []byte(salt), n, 8, 1, 32)
-	if err != nil {
-		panic(err)
-	}
-	return hex.EncodeToString(k)
-}
-
-// ensureAdmin makes the admin account with a one-time password when there
-// is none (new install, or after reset-admin).
-func ensureAdmin(st *store, n int) (string, error) {
-	if st.adminAccount() != nil {
-		return "", nil
-	}
-	pw := oneTimePassword()
-	salt := randomHex(16)
-	err := st.setAdmin(&adminAccount{Hash: hashPassword(pw, salt, n), Salt: salt, N: n,
-		MustChange: true, Changed: time.Now()})
-	if err != nil {
-		return "", err
-	}
-	os.WriteFile(st.path("initial-password.txt"), []byte(pw+"\n"), 0o600)
-	return pw, nil
-}
-
-func oneTimePassword() string {
-	const abc = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	b := make([]byte, 14)
-	for i := range b {
-		k, _ := rand.Int(rand.Reader, big.NewInt(int64(len(abc))))
-		b[i] = abc[k.Int64()]
-	}
-	return string(b)
-}
-
-func (w *webServer) checkPassword(pw string) bool {
-	a := w.st.adminAccount()
-	if a == nil {
-		return false
-	}
-	got := hashPassword(pw, a.Salt, a.N)
-	return subtle.ConstantTimeCompare([]byte(got), []byte(a.Hash)) == 1
-}
-
-// ------------------------------------------------------------- sessions
-
-func (w *webServer) sessionOf(r *http.Request) (string, *session) {
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
-		return "", nil
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	s := w.sessions[c.Value]
-	if s == nil {
-		return "", nil
-	}
-	if time.Since(s.last) > sessionIdle {
-		delete(w.sessions, c.Value)
-		return "", nil
-	}
-	// Background polling (status refresh) doesn't count as activity.
-	if r.Header.Get("X-Background") == "" {
-		s.last = time.Now()
-	}
-	return c.Value, s
-}
-
-func (w *webServer) newSession(rw http.ResponseWriter) {
-	tok := randomToken()
-	w.mu.Lock()
-	for k, s := range w.sessions {
-		if time.Since(s.last) > sessionIdle {
-			delete(w.sessions, k)
-		}
-	}
-	w.sessions[tok] = &session{last: time.Now()}
-	w.mu.Unlock()
-	http.SetCookie(rw, &http.Cookie{Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteStrictMode})
-}
-
-func (w *webServer) endSessions(except string) {
-	w.mu.Lock()
-	for k := range w.sessions {
-		if k != except {
-			delete(w.sessions, k)
-		}
-	}
-	w.mu.Unlock()
+	return &webServer{portal: newPortal(st, cfg.ScryptN), cfg: cfg, st: st, srv: srv, log: lr}
 }
 
 // ---------------------------------------------------------------- routes
 
 func (w *webServer) handler() http.Handler {
 	m := http.NewServeMux()
-	m.HandleFunc("GET /api/session", w.apiSession)
-	m.HandleFunc("POST /api/login", w.apiLogin)
-	m.HandleFunc("POST /api/logout", w.apiLogout)
-	m.HandleFunc("POST /api/password", w.auth(true, w.apiPassword))
+	w.routes(m)
 	m.HandleFunc("GET /api/status", w.auth(false, w.apiStatus))
 	m.HandleFunc("GET /api/qr.svg", w.auth(false, w.apiQR))
 	m.HandleFunc("POST /api/check", w.auth(false, w.apiCheck))
@@ -183,26 +64,6 @@ func (w *webServer) handler() http.Handler {
 	return securityHeaders(m)
 }
 
-func securityHeaders(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		hd := rw.Header()
-		hd.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
-		hd.Set("X-Frame-Options", "DENY")
-		hd.Set("X-Content-Type-Options", "nosniff")
-		hd.Set("Referrer-Policy", "no-referrer")
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			hd.Set("Cache-Control", "no-store")
-			// Only the page itself may call the API (a cross-site form or
-			// fetch can't add this header without CORS, which is off).
-			if r.Header.Get("X-Gundil") != "1" {
-				http.Error(rw, "forbidden", http.StatusForbidden)
-				return
-			}
-		}
-		h.ServeHTTP(rw, r)
-	})
-}
-
 func (w *webServer) static() http.Handler {
 	var root fs.FS
 	if w.cfg.WebDir != "" && fileExists(filepath.Join(w.cfg.WebDir, "index.html")) {
@@ -211,147 +72,6 @@ func (w *webServer) static() http.Handler {
 		root, _ = fs.Sub(embeddedWeb, "web")
 	}
 	return http.FileServer(http.FS(root))
-}
-
-func writeJSONResp(rw http.ResponseWriter, code int, v any) {
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(code)
-	json.NewEncoder(rw).Encode(v)
-}
-
-func fail(rw http.ResponseWriter, code int, msg string) {
-	writeJSONResp(rw, code, map[string]any{"error": msg})
-}
-
-func readBody(r *http.Request, v any) error {
-	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
-}
-
-// auth: signed in, and (unless [duringChange]) the one-time password has
-// been changed.
-func (w *webServer) auth(duringChange bool, h http.HandlerFunc) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		_, s := w.sessionOf(r)
-		if s == nil {
-			fail(rw, http.StatusUnauthorized, "signed out")
-			return
-		}
-		if !duringChange {
-			if a := w.st.adminAccount(); a == nil || a.MustChange {
-				writeJSONResp(rw, http.StatusForbidden, map[string]any{"error": "change the password first", "mustChange": true})
-				return
-			}
-		}
-		h(rw, r)
-	}
-}
-
-func (w *webServer) apiSession(rw http.ResponseWriter, r *http.Request) {
-	_, s := w.sessionOf(r)
-	a := w.st.adminAccount()
-	out := map[string]any{"signedIn": s != nil, "user": "admin", "idleMinutes": int(sessionIdle.Minutes())}
-	if s != nil {
-		out["mustChange"] = a == nil || a.MustChange
-		w.mu.Lock()
-		out["idleLeft"] = int((sessionIdle - time.Since(s.last)).Seconds())
-		w.mu.Unlock()
-	}
-	writeJSONResp(rw, 200, out)
-}
-
-func (w *webServer) apiLogin(rw http.ResponseWriter, r *http.Request) {
-	var m struct{ User, Password string }
-	if readBody(r, &m) != nil {
-		fail(rw, 400, "bad request")
-		return
-	}
-	w.mu.Lock()
-	if time.Now().Before(w.lockedTo) {
-		left := time.Until(w.lockedTo).Round(time.Second)
-		w.mu.Unlock()
-		fail(rw, http.StatusTooManyRequests, fmt.Sprintf("Too many wrong passwords. Try again in %v.", left))
-		return
-	}
-	w.mu.Unlock()
-	ok := (m.User == "" || m.User == "admin") && w.checkPassword(m.Password)
-	w.mu.Lock()
-	if !ok {
-		w.failures++
-		if w.failures >= maxFailures {
-			w.failures = 0
-			w.lockedTo = time.Now().Add(lockDuration)
-			log.Printf("web: %d wrong passwords (last from %s): sign-in locked for 5 minutes", maxFailures, clientIP(r))
-		}
-		w.mu.Unlock()
-		time.Sleep(500 * time.Millisecond)
-		fail(rw, http.StatusUnauthorized, "Wrong user name or password.")
-		return
-	}
-	w.failures = 0
-	w.mu.Unlock()
-	w.newSession(rw)
-	a := w.st.adminAccount()
-	log.Printf("web: admin signed in from %s", clientIP(r))
-	writeJSONResp(rw, 200, map[string]any{"ok": true, "mustChange": a.MustChange})
-}
-
-func clientIP(r *http.Request) string {
-	h := r.RemoteAddr
-	if i := strings.LastIndex(h, ":"); i > 0 {
-		h = h[:i]
-	}
-	return h
-}
-
-func (w *webServer) apiLogout(rw http.ResponseWriter, r *http.Request) {
-	if tok, _ := w.sessionOf(r); tok != "" {
-		w.mu.Lock()
-		delete(w.sessions, tok)
-		w.mu.Unlock()
-	}
-	http.SetCookie(rw, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
-		SameSite: http.SameSiteStrictMode})
-	writeJSONResp(rw, 200, map[string]any{"ok": true})
-}
-
-func (w *webServer) apiPassword(rw http.ResponseWriter, r *http.Request) {
-	var m struct{ Current, New string }
-	if readBody(r, &m) != nil {
-		fail(rw, 400, "bad request")
-		return
-	}
-	if !w.checkPassword(m.Current) {
-		fail(rw, 400, "The current password is wrong.")
-		return
-	}
-	if err := passwordProblem(m.New, m.Current); err != nil {
-		fail(rw, 400, err.Error())
-		return
-	}
-	salt := randomHex(16)
-	n := w.cfg.ScryptN
-	if err := w.st.setAdmin(&adminAccount{Hash: hashPassword(m.New, salt, n), Salt: salt, N: n,
-		Changed: time.Now()}); err != nil {
-		fail(rw, 500, err.Error())
-		return
-	}
-	os.Remove(w.st.path("initial-password.txt"))
-	tok, _ := w.sessionOf(r)
-	w.endSessions(tok) // Other signed-in browsers must sign in again.
-	log.Printf("web: admin password changed")
-	writeJSONResp(rw, 200, map[string]any{"ok": true})
-}
-
-func passwordProblem(pw, old string) error {
-	switch {
-	case len([]rune(pw)) < minPassword:
-		return fmt.Errorf("Use at least %d characters.", minPassword)
-	case pw == old:
-		return errors.New("Choose a password different from the current one.")
-	case strings.EqualFold(pw, "admin") || strings.EqualFold(pw, "password") || strings.EqualFold(pw, "1234567890"):
-		return errors.New("That password is too easy to guess.")
-	}
-	return nil
 }
 
 func (w *webServer) apiStatus(rw http.ResponseWriter, r *http.Request) {
@@ -577,30 +297,4 @@ func (w *webServer) apiVersionDelete(rw http.ResponseWriter, r *http.Request) {
 
 func (w *webServer) apiLog(rw http.ResponseWriter, r *http.Request) {
 	writeJSONResp(rw, 200, map[string]any{"lines": w.log.lines()})
-}
-
-// -------------------------------------------------------------- helpers
-
-// logRing keeps the last lines of the log for the web page.
-type logRing struct {
-	mu  sync.Mutex
-	buf []string
-}
-
-func (l *logRing) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	for _, line := range strings.Split(strings.TrimRight(string(p), "\n"), "\n") {
-		l.buf = append(l.buf, line)
-	}
-	if len(l.buf) > 500 {
-		l.buf = l.buf[len(l.buf)-500:]
-	}
-	l.mu.Unlock()
-	return len(p), nil
-}
-
-func (l *logRing) lines() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return append([]string(nil), l.buf...)
 }

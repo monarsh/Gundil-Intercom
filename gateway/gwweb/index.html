@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gundil Gateway</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header id="top" hidden>
+  <div class="brand">Gundil Gateway</div>
+  <nav id="tabs">
+    <button data-tab="status" class="on">Status</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="log">Log</button>
+  </nav>
+  <div class="who"><span id="idle" title="Signed out after 30 minutes without activity"></span><button id="logout" class="link">Sign out</button></div>
+</header>
+
+<main>
+  <!-- Sign in -->
+  <section id="v-login" class="card narrow" hidden>
+    <h1>Gundil Gateway</h1>
+    <p class="muted" id="login-note">Sign in as the admin.</p>
+    <form id="f-login">
+      <label>User name <input name="user" value="admin" autocomplete="username" readonly></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required autofocus></label>
+      <p class="error" id="login-error"></p>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <p class="muted small">After a new install or a reset, the one-time password is in the gateway's log (Linux: <code>journalctl -u gundil-gateway</code>; Windows: the Event Viewer) and in <code>web-initial-password.txt</code> next to its state file. Lost the password? Run <code>gundil-gateway reset-admin</code> on the device.</p>
+  </section>
+
+  <!-- Change password (forced after a new install) -->
+  <section id="v-password" class="card narrow" hidden>
+    <h1>Choose a new password</h1>
+    <p class="muted" id="pw-note">This is a new admin account: replace the one-time password before you continue.</p>
+    <form id="f-password">
+      <label>Current (one-time) password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password <input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label>New password again <input name="again" type="password" autocomplete="new-password" minlength="10" required></label>
+      <p class="muted small">At least 10 characters. This is the password of this page, not the intercom password.</p>
+      <p class="error" id="pw-error"></p>
+      <div class="row"><button class="primary" type="submit">Change password</button><button type="button" id="pw-cancel" hidden>Cancel</button></div>
+    </form>
+  </section>
+
+  <!-- Status -->
+  <section id="v-status" hidden>
+    <div class="bar"><h2>Status</h2></div>
+    <div id="waiting" class="card notice" hidden></div>
+    <div class="cols">
+      <div class="card">
+        <h3>Gateway</h3>
+        <dl id="st-main"></dl>
+        <div class="row"><button id="restart">Restart</button></div>
+      </div>
+      <div class="card">
+        <h3>Network</h3>
+        <dl id="st-net"></dl>
+        <button id="check">Check network</button>
+        <p class="muted small">Connects to the relays, asks STUN for the NAT type (cone means direct calls work) and tries the cameras to check. Takes about 10 seconds.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Account</h3>
+      <p class="muted small">The password of this page (user <code>admin</code>).</p>
+      <button id="change-pw">Change password</button>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="v-settings" hidden>
+    <div class="bar"><h2>Settings</h2></div>
+    <form id="f-settings" class="card" autocomplete="off">
+      <fieldset>
+        <legend>How the apps find this gateway</legend>
+        <label><input type="radio" name="authMode" value="password"> Intercom password</label>
+        <label><input type="radio" name="authMode" value="home_key"> Home key</label>
+        <div id="auth-password" hidden>
+          <label>Intercom password <input name="password" type="password" autocomplete="new-password"></label>
+          <p class="muted small">The same as in the apps, at least 10 characters. <span id="pw-kept"></span></p>
+        </div>
+        <div id="auth-home" hidden>
+          <label>Home key <input name="homeKey" type="password" autocomplete="off" placeholder="GUNDIL-PAIR-…"></label>
+          <p class="muted small">For apps without a password: in a paired app open Settings → Internet calls → Pairing → Copy pairing code, and paste it here. <span id="hk-kept"></span></p>
+        </div>
+      </fieldset>
+      <label>Name <input name="name" maxlength="64" required></label>
+      <p class="muted small">The name the apps show for this gateway.</p>
+      <label class="check"><input type="checkbox" name="shareCameras"> Share home cameras</label>
+      <p class="muted small">The apps outside home can reach the cameras on this LAN through this gateway: only apps with the intercom password or home key, and only addresses on this LAN.</p>
+      <label>Cameras to check <input name="checkHosts" placeholder="192.168.1.50:554"></label>
+      <p class="muted small">Optional. Check network also tries these (address:port, comma separated).</p>
+      <label>Nostr relays <input name="relays"></label>
+      <p class="muted small">Optional. Comma separated; empty uses the built-in list.</p>
+      <label class="check"><input type="checkbox" name="updates"> Update itself from the update server</label>
+      <label>Update server <input name="updateServer" placeholder="GUNDIL-UPDATE-…"></label>
+      <p class="muted small">Optional: the server code from your update server. Empty uses the one built into this gateway, if any. The server decides the version.</p>
+      <p class="error" id="set-error"></p>
+      <div class="row"><button class="primary" type="submit">Save and restart</button><span id="set-saved" class="ok"></span></div>
+      <p class="muted small">Saved in <code id="cfg-path"></code>. The gateway restarts with the new settings in a few seconds; this page stays signed in.</p>
+    </form>
+  </section>
+
+  <!-- Log -->
+  <section id="v-log" hidden>
+    <div class="bar"><h2>Log</h2><button id="log-refresh">Refresh</button></div>
+    <div class="card"><pre id="log"></pre></div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

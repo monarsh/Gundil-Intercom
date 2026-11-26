@@ -7,7 +7,6 @@ package main
 // encrypted link (see update_proto.go).
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -364,12 +363,4 @@ func clip(s string, n int) string {
 		return string([]rune(s)[:n])
 	}
 	return s
-}
-
-func randomToken() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b)
 }

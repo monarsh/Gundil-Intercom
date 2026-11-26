@@ -9,6 +9,7 @@ type serviceSpec struct {
 	template                             string
 	needsConfig                          bool
 	check                                func(path string) error
+	installed                            func(cfgPath string)
 }
 
 func runAsService(func()) bool { return false }

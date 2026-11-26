@@ -21,6 +21,7 @@ type serviceSpec struct {
 	template                             string // Written when there is no config yet.
 	needsConfig                          bool   // Stop after writing the template.
 	check                                func(path string) error
+	installed                            func(cfgPath string) // After the service started (optional).
 }
 
 type handler struct{ run func() }
@@ -116,6 +117,9 @@ func installService(cfgPath string) error {
 		return err
 	}
 	fmt.Printf("Installed and started the %s service.\n", svcSpec.name)
+	if svcSpec.installed != nil {
+		svcSpec.installed(cfgPath)
+	}
 	return nil
 }
 

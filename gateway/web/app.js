@@ -53,6 +53,8 @@ async function api(method, path, body, opts = {}) {
     payload = JSON.stringify(body);
   }
   const r = await fetch('/api/' + path, { method, headers, body: payload, credentials: 'same-origin' });
+  // The server counts every request but background ones as activity.
+  if (!opts.background && r.status !== 401) lastActivity = lastPing = Date.now();
   const isJson = (r.headers.get('Content-Type') || '').includes('json');
   const data = isJson ? await r.json() : await r.blob();
   if (!r.ok) {
@@ -405,7 +407,7 @@ async function login(ev) {
   try {
     const r = await api('POST', 'login', { user: 'admin', password: f.password.value });
     signedIn = true;
-    lastActivity = Date.now();
+    lastActivity = lastPing = Date.now();
     if (r.mustChange) showPassword(true);
     else openTab('devices');
   } catch (e) {
@@ -436,14 +438,14 @@ async function logout() {
 }
 
 // Activity: the server only counts requests without X-Background, so tell
-// it about clicks and typing at most once a minute.
+// it about clicks, typing and scrolling at most once a minute. The countdown
+// runs from the last time the server heard of it, so the two agree.
 let lastPing = 0;
 function activity() {
   if (!signedIn) return;
-  lastActivity = Date.now();
   if (Date.now() - lastPing > 60000) {
     lastPing = Date.now();
-    api('GET', 'session').catch(() => {});
+    api('GET', 'session').then(() => { lastActivity = lastPing; }).catch(() => {});
   }
 }
 
@@ -479,7 +481,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('#change-pw').addEventListener('click', () => showPassword(false));
   $('#log-refresh').addEventListener('click', loadLog);
-  for (const e of ['click', 'keydown']) document.addEventListener(e, activity, { passive: true });
+  for (const e of ['click', 'keydown', 'scroll', 'mousemove', 'touchstart']) {
+    document.addEventListener(e, activity, { passive: true, capture: true });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) activity(); });
   keepBoxes();
   setInterval(tick, 1000);
   start().catch((e) => showLogin(e.message));

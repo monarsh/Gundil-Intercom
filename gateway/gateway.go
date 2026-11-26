@@ -7,7 +7,6 @@ package main
 // through (tunnel frames). It can't be called: no audio.
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -46,6 +45,9 @@ type gateway struct {
 	public *net.UDPAddr
 	nat    string
 	stunAt time.Time
+
+	done     chan struct{} // Closed by stop().
+	stopOnce sync.Once
 }
 
 func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {
@@ -59,7 +61,7 @@ func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {
 		return nil, err
 	}
 	g := &gateway{cfg: cfg, selfID: st.DeviceID, priv: priv,
-		mux: mux, share: cfg.ShareCameras, anyHost: cfg.AnyHost}
+		mux: mux, share: cfg.ShareCameras, anyHost: cfg.AnyHost, done: make(chan struct{})}
 	if cfg.Password != "" {
 		g.keys, g.secret = deriveRendezvous(cfg.Password, scryptN), networkSecret(cfg.Password)
 	} else {
@@ -75,18 +77,62 @@ func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {
 	return g, nil
 }
 
+// run serves until stop().
 func (g *gateway) run() {
 	g.nostr.start()
 	go g.stun(true)
 	go g.runUpdates()
 	go func() {
-		for range time.Tick(5 * time.Minute) {
-			g.announce()
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-g.done:
+				return
+			case <-t.C:
+				g.announce()
+			}
 		}
 	}()
-	for e := range g.nostr.events {
-		g.onEvent(e)
+	for {
+		select {
+		case <-g.done:
+			return
+		case e := <-g.nostr.events:
+			g.onEvent(e)
+		}
 	}
+}
+
+// stop ends run(), the relays, the UDP socket and its links (the web page
+// restarts the gateway this way after its settings changed).
+func (g *gateway) stop() {
+	g.stopOnce.Do(func() {
+		close(g.done)
+		g.nostr.close()
+		g.mux.close()
+	})
+}
+
+// sleep waits [d]; false when the gateway stopped meanwhile.
+func (g *gateway) sleep(d time.Duration) bool {
+	select {
+	case <-g.done:
+		return false
+	case <-time.After(d):
+		return true
+	}
+}
+
+// lastStun: the latest STUN result, without asking again.
+func (g *gateway) lastStun() (string, string) {
+	g.stunMu.Lock()
+	defer g.stunMu.Unlock()
+	pub := ""
+	if g.public != nil {
+		pub = g.public.String()
+	}
+	return pub, g.nat
 }
 
 func (g *gateway) stun(fresh bool) (*net.UDPAddr, string) {
@@ -414,44 +460,74 @@ func inSubnet(host, subnet string) bool {
 	return subnet == fmt.Sprintf("%d.%d.%d.0/24", ip[0], ip[1], ip[2])
 }
 
-func randomHex(n int) string {
-	b := make([]byte, n)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+// checkReport: what --check prints and the web page shows.
+type checkReport struct {
+	Key         string   `json:"key"` // "password" or the home key's fingerprint.
+	Relays      int      `json:"relays"`
+	RelaysTotal int      `json:"relaysTotal"`
+	NAT         string   `json:"nat"` // cone, symmetric, unknown
+	NATText     string   `json:"natText"`
+	Public      string   `json:"public"`
+	Share       bool     `json:"share"`
+	Subnets     []string `json:"subnets"`
+	Cameras     []string `json:"cameras"` // One line per check_hosts entry.
 }
 
-func (g *gateway) check() {
+// runCheck waits (up to 8 s) for the relays, asks STUN, and tries the
+// check_hosts.
+func (g *gateway) runCheck() checkReport {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) && g.nostr.connected() < len(g.cfg.Relays) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	pub, nat := g.stun(true)
-	natText := map[string]string{
+	r := checkReport{Relays: g.nostr.connected(), RelaysTotal: len(g.cfg.Relays), NAT: nat, Share: g.share}
+	r.NATText = map[string]string{
 		"cone":      "direct calls likely (one public port per socket)",
 		"symmetric": "direct calls may fail (strict NAT)",
 		"unknown":   "unknown (no STUN server answered)",
 	}[nat]
-	nets, _ := localAddrs()
-	if g.cfg.Password == "" {
-		fmt.Printf("Key:     home key %s (compare with the app)\n", homeFingerprint(g.cfg.HomeKey))
-	} else {
-		fmt.Printf("Key:     the intercom password\n")
+	if pub != nil {
+		r.Public = pub.String()
 	}
-	fmt.Printf("Relays:  %d of %d connected\n", g.nostr.connected(), len(g.cfg.Relays))
-	fmt.Printf("NAT:     %s\n", natText)
-	fmt.Printf("Public:  %v\n", pub)
-	if g.share {
-		fmt.Printf("Shares:  %s\n", strings.Join(nets, ", "))
+	r.Subnets, _ = localAddrs()
+	if g.cfg.Password == "" {
+		r.Key = homeFingerprint(g.cfg.HomeKey)
 	} else {
-		fmt.Printf("Shares:  nothing (share_cameras = false)\n")
+		r.Key = "password"
 	}
 	for _, t := range g.cfg.CheckHosts {
 		conn, err := net.DialTimeout("tcp4", t, 3*time.Second)
 		if err != nil {
-			fmt.Printf("Camera:  %s does not answer: %v\n", t, err)
+			r.Cameras = append(r.Cameras, fmt.Sprintf("%s does not answer: %v", t, err))
 			continue
 		}
 		conn.Close()
-		fmt.Printf("Camera:  %s answers\n", t)
+		r.Cameras = append(r.Cameras, t+" answers")
+	}
+	return r
+}
+
+func (g *gateway) check() {
+	r := g.runCheck()
+	if r.Key == "password" {
+		fmt.Printf("Key:     the intercom password\n")
+	} else {
+		fmt.Printf("Key:     home key %s (compare with the app)\n", r.Key)
+	}
+	fmt.Printf("Relays:  %d of %d connected\n", r.Relays, r.RelaysTotal)
+	fmt.Printf("NAT:     %s\n", r.NATText)
+	if r.Public == "" {
+		fmt.Printf("Public:  <nil>\n")
+	} else {
+		fmt.Printf("Public:  %s\n", r.Public)
+	}
+	if r.Share {
+		fmt.Printf("Shares:  %s\n", strings.Join(r.Subnets, ", "))
+	} else {
+		fmt.Printf("Shares:  nothing (share_cameras = false)\n")
+	}
+	for _, c := range r.Cameras {
+		fmt.Printf("Camera:  %s\n", c)
 	}
 }

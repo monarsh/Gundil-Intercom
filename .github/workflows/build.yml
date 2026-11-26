@@ -86,6 +86,21 @@ jobs:
           curl -fsS http://127.0.0.1:18780/ | grep -q 'Gundil Update Server'
           grep -q 'one-time password' "$d/log"
           kill $!
+      - name: Gateway starts without a key and serves its web page
+        run: |
+          set -euo pipefail
+          d=$(mktemp -d)
+          tar xzf "gateway/dist/gundil-gateway-$V-linux-x86_64.tar.gz" -C "$d"
+          cp "$d"/gundil-gateway-*/gundil-gateway.conf.example "$d/g.conf"
+          printf 'web_listen = 127.0.0.1:18781\nstate = %s/state.json\nrelays = wss://127.0.0.1:1\nupdates = false\n' "$d" >> "$d/g.conf"
+          "$d"/gundil-gateway-*/gundil-gateway --config="$d/g.conf" > "$d/log" 2>&1 &
+          sleep 3
+          curl -fsS http://127.0.0.1:18781/ | grep -q 'Gundil Gateway'
+          curl -fsS http://127.0.0.1:18781/style.css | grep -q -- '--accent'
+          grep -q 'one-time password' "$d/log"
+          grep -q 'Waiting for the settings' "$d/log"
+          test -f "$d/web-initial-password.txt"
+          kill $!
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-gateway

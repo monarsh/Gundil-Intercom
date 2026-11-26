@@ -110,12 +110,16 @@ func (g *gateway) runUpdates() {
 	if g.cfg.UpdateDelay > 0 {
 		first = time.Duration(g.cfg.UpdateDelay) * time.Second
 	}
-	time.Sleep(first)
+	if !g.sleep(first) {
+		return
+	}
 	for {
 		if err := g.updateOnce(pub, pkg); err != nil {
 			log.Printf("self-update: %v", err)
 		}
-		time.Sleep(updateEvery)
+		if !g.sleep(updateEvery) {
+			return
+		}
 	}
 }
 

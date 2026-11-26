@@ -26,6 +26,9 @@ type config struct {
 	Updates      bool     // Self-update from the update server.
 	UpdateServer string   // Its code, instead of the built-in one.
 	UpdateDelay  int      // Tests: seconds before the first check.
+	Web          bool     // The settings web page (not on OpenWrt: LuCI).
+	WebListen    string   // Its address, e.g. 0.0.0.0:8781.
+	Path         string   // This file.
 	AnyHost      bool     // Tests only.
 	TestSubnets  []string // Tests only: subnets to announce.
 	ScryptN      int      // Tests only.
@@ -56,14 +59,37 @@ func programData() string {
 	return `C:\ProgramData`
 }
 
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
+// isOpenWrt: OpenWrt has LuCI, so no web page of our own there.
+func isOpenWrt() bool { return fileExists("/etc/openwrt_release") }
+
+// loadConfig reads the file and requires the password or home key.
+func loadConfig(path string) (*config, error) {
+	c, err := parseConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.authProblem(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
-func loadConfig(path string) (*config, error) {
+// authProblem: why the gateway can't run yet (no password or home key).
+func (c *config) authProblem() error {
+	switch {
+	case c.Password == "" && c.HomeKey == nil:
+		return fmt.Errorf("set password (the intercom password, 10+ characters) or home_key (the pairing code from a paired app) in %s", c.Path)
+	case c.Password != "" && len(c.Password) < 10:
+		return fmt.Errorf("password must be the intercom password, at least 10 characters (in %s)", c.Path)
+	}
+	return nil
+}
+
+// parseConfig reads the file; the password or home key may still be
+// missing (the web page then asks for them).
+func parseConfig(path string) (*config, error) {
 	c := &config{Relays: defaultRelays, Stun: defaultStunServers, StatePath: defaultStatePath(),
-		ScryptN: defaultScryptN, Updates: true}
+		ScryptN: defaultScryptN, Updates: true, Web: !isOpenWrt(), WebListen: "0.0.0.0:8781", Path: path}
 	host, _ := os.Hostname()
 	c.Name = "Gateway " + host
 	f, err := os.Open(path)
@@ -127,6 +153,12 @@ func loadConfig(path string) (*config, error) {
 				}
 			}
 			c.UpdateServer = v
+		case "web":
+			c.Web = !(v == "0" || strings.EqualFold(v, "off") || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+		case "web_listen":
+			if v != "" {
+				c.WebListen = v
+			}
 		case "test_update_delay":
 			fmt.Sscan(v, &c.UpdateDelay)
 		case "check_hosts":
@@ -139,13 +171,70 @@ func loadConfig(path string) (*config, error) {
 			fmt.Sscan(v, &c.ScryptN)
 		}
 	}
-	switch {
-	case c.Password == "" && c.HomeKey == nil:
-		return nil, fmt.Errorf("set password (the intercom password, 10+ characters) or home_key (the pairing code from a paired app) in %s", path)
-	case c.Password != "" && len(c.Password) < 10:
-		return nil, fmt.Errorf("password must be the intercom password, at least 10 characters (in %s)", path)
-	}
 	return c, nil
+}
+
+// setConfigValues changes settings in the file and keeps everything else
+// (comments, other keys): an existing "key = …" line is replaced, else a
+// commented-out example ("# key = …"), else the line is added at the end.
+// An empty value writes "key =" (off / not set).
+func setConfigValues(path string, values [][2]string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	keyOf := func(line string) (string, bool) {
+		t := strings.TrimSpace(line)
+		commented := strings.HasPrefix(t, "#")
+		t = strings.TrimSpace(strings.TrimPrefix(t, "#"))
+		k, _, ok := strings.Cut(t, "=")
+		if !ok {
+			return "", false
+		}
+		k = strings.ReplaceAll(strings.TrimSpace(k), "-", "_")
+		if strings.ContainsAny(k, " \t") {
+			return "", false // A sentence in a comment, not "# key = value".
+		}
+		return k, commented
+	}
+	for _, kv := range values {
+		k, v := kv[0], kv[1]
+		if strings.ContainsAny(k+v, "\r\n") {
+			return fmt.Errorf("%s: no line breaks", k)
+		}
+		line := k + " = " + v
+		active, example := -1, -1
+		for i, l := range lines {
+			if key, commented := keyOf(l); key == k {
+				if !commented && active < 0 {
+					active = i
+				} else if commented && example < 0 {
+					example = i
+				}
+			}
+		}
+		switch {
+		case active >= 0:
+			lines[active] = line
+		case example >= 0:
+			lines[example] = line
+		default:
+			lines = append(lines, line)
+		}
+	}
+	out := []byte(strings.Join(lines, "\n") + "\n")
+	// Written in place: on Linux the file is in /etc, where the service may
+	// write this file but not create others.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(out); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // state: this gateway's id and Nostr key, made on first start.
@@ -195,6 +284,11 @@ name = Home gateway
 
 # Let the apps reach devices on this LAN (cameras) through this gateway.
 share_cameras = true
+
+# The settings web page (not on OpenWrt, which has LuCI):
+# http://<this device>:8781, only from the LAN. web = off turns it off.
+# web = on
+# web_listen = 0.0.0.0:8781
 
 # Optional: other Nostr relays (comma separated).
 # relays = wss://relay.damus.io, wss://nos.lol

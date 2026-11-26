@@ -281,6 +281,7 @@ state = ${tmp.path}/gw-state.json
 test_scrypt_n = 1024
 update_server = $code
 test_update_delay = 1
+web_listen = 127.0.0.1:0
 ''');
     final gw = await Process.start(gwBin, ['--config=${conf.path}']);
     final gwLog = StringBuffer();

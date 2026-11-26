@@ -71,11 +71,6 @@ func programData() string {
 	return `C:\ProgramData`
 }
 
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
-
 // defaultWebDir: "web" next to the program, or the installed copy.
 func defaultWebDir() string {
 	if exe, err := os.Executable(); err == nil {

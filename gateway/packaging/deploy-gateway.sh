@@ -210,13 +210,21 @@ linux)
 			done < /tmp/gundil-gateway.set
 		fi
 		rm -rf "$d" /tmp/gundil-gateway.tar.gz /tmp/gundil-gateway.set
-		if sudo grep -Eq "^(password *= *.{10,}|home_key *= *[^ ]+)" $C; then
-			sudo systemctl enable gundil-gateway >/dev/null 2>&1; sudo systemctl restart gundil-gateway; sleep 3
-			sudo journalctl -u gundil-gateway -n 10 --no-pager
-		else
+		keyed=0; sudo grep -Eq "^(password *= *.{10,}|home_key *= *[^ ]+)" $C && keyed=1
+		web=1; sudo grep -Eq "^ *web *= *(off|false|no|0) *$" $C && web=0
+		if [ $keyed = 0 ] && [ $web = 0 ]; then
 			echo "Not started: no intercom password or home key yet. Run again with --home-key or --password."
 			exit 3
-		fi'
+		fi
+		sudo systemctl enable gundil-gateway >/dev/null 2>&1; sudo systemctl restart gundil-gateway; sleep 3
+		sudo journalctl -u gundil-gateway -n 10 --no-pager
+		if [ $web = 1 ]; then
+			port=$(sudo sed -n "s/^ *web_listen *= *.*:\([0-9]*\) *$/\1/p" $C | tail -n 1)
+			echo "Web page: http://$(hostname -I 2>/dev/null | awk "{print \$1}"):${port:-8781} (from the local network)"
+			P=/var/lib/gundil-gateway/web-initial-password.txt
+			sudo test -f $P && echo "Sign in as \"admin\" with the one-time password: $(sudo cat $P)" || true
+		fi
+		[ $keyed = 1 ] || { echo "Set the intercom password or the home key on the web page (or run again with --home-key)."; exit 4; }'
 	[ "$CHECK" = 0 ] || { say "Network check (about 10 s)"; ssh -t "$TARGET" 'sudo gundil-gateway --check --config=/etc/gundil-gateway.conf' || true; }
 	;;
 windows)
