@@ -19,6 +19,8 @@ Windows:     unzip, then as Administrator:  gundil-update-server.exe install
 AppImage:    chmod +x gundil-update-server-*.AppImage && ./gundil-update-server-*.AppImage
 From your computer over SSH (any of the above):
              ./deploy.sh root@192.168.1.1
+It can share a machine with gundil-gateway (e.g. the same OpenWrt router):
+separate programs, settings and data; only TCP 8780 (admin page) is fixed.
 
 First sign-in
 -------------

@@ -24,6 +24,7 @@ conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
 		[ "$updates" = 1 ] && echo "updates = true" || echo "updates = false"
 		[ -n "$update_server" ] && echo "update_server = $update_server"
 	} > "$1"
+	return 0 # (The block above ends in a test that is false when no update server is set.)
 }
 
 case "$1" in

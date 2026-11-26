@@ -51,6 +51,7 @@ jobs:
           cd gateway
           go vet ./... && GOOS=windows go vet ./... && go test ./...
           go vet -tags updateserver ./... && GOOS=windows go vet -tags updateserver ./... && go test -tags updateserver ./...
+          sh packaging/luci/test-helper.sh
       - name: Build the packages (gateway and update server)
         run: |
           TAG="${{ inputs.release || github.ref_name }}"

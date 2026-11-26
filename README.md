@@ -299,7 +299,10 @@ they were offered](docs/update-server.png)
 **The server** runs on a Linux PC or server (x86_64), a Raspberry Pi or
 Orange Pi, an OpenWrt router, a Windows PC (as a service) or as an AppImage.
 Its files are in each release under `server-…` (the apps' files are under
-`app-…`).
+`app-…`). It can run on the same machine as `gundil-gateway`
+(for example both on your OpenWrt router): they are separate programs with
+their own settings, data and LuCI pages, and use no fixed ports except the
+admin page (TCP 8780).
 
 - **Install** from your computer over SSH: `./deploy.sh root@192.168.1.1`
   (in `server-gundil-update-server-VERSION-tools.zip`). It finds out whether
