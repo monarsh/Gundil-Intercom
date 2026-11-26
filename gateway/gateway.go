@@ -48,6 +48,10 @@ type gateway struct {
 
 	done     chan struct{} // Closed by stop().
 	stopOnce sync.Once
+
+	updRun sync.Mutex // One update check at a time.
+	updMu  sync.Mutex
+	upd    updateStatus
 }
 
 func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {

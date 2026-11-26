@@ -299,6 +299,51 @@ web_listen = 127.0.0.1:0
     expect(File(gwBin).readAsStringSync(), 'NEW GATEWAY');
   }, timeout: const Timeout(Duration(seconds: 120)));
 
+  test('gundil-gateway update: checks, and installs on request', () async {
+    if (bin == null) return markTestSkipped('Go is not installed');
+    if (Platform.isWindows || cpuName() != 'x86_64') {
+      return markTestSkipped('needs linux x86_64');
+    }
+    final gwBin = '${tmp.path}/gwbin2/gundil-gateway';
+    Directory('${tmp.path}/gwbin2').createSync();
+    final b = await Process.run(
+      'go',
+      ['build', '-o', gwBin, '.'],
+      workingDirectory: '../../gateway',
+      environment: {'GOTOOLCHAIN': 'local', 'CGO_ENABLED': '0'},
+    );
+    expect(b.exitCode, 0, reason: '${b.stderr}');
+    final conf = File('${tmp.path}/gw2.conf')
+      ..writeAsStringSync('''
+password = correct horse battery
+name = Router 2
+relays = ${relay.url}
+stun = 127.0.0.1:${stun.port}, 127.0.0.1:${stun.port}
+state = ${tmp.path}/gw2-state.json
+test_scrypt_n = 1024
+update_server = $code
+''');
+    // Only asking: nothing is installed.
+    final check = await Process.run(gwBin, [
+      '--config=${conf.path}',
+      'update',
+    ]).timeout(const Duration(seconds: 60));
+    expect(check.exitCode, 0, reason: '${check.stdout}${check.stderr}');
+    expect(check.stdout, contains('version 9.9.9 is available'));
+    expect(check.stdout, contains('update --install'));
+    expect(File(gwBin).lengthSync(), greaterThan(100000)); // Still the program.
+    // Installing: the program is replaced (restarting the service fails
+    // here: there is none).
+    final inst = await Process.run(gwBin, [
+      '--config=${conf.path}',
+      'update',
+      '--install',
+    ]).timeout(const Duration(seconds: 60));
+    expect(inst.exitCode, 0, reason: '${inst.stdout}${inst.stderr}');
+    expect(inst.stdout, contains('installed 9.9.9'));
+    expect(File(gwBin).readAsStringSync(), 'NEW GATEWAY');
+  }, timeout: const Timeout(Duration(seconds: 150)));
+
   test('another server key gets no answer', () async {
     if (bin == null) return markTestSkipped('Go is not installed');
     final k = Uint8List.fromList(List.generate(32, (i) => 7));

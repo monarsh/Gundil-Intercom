@@ -115,10 +115,12 @@ return view.extend({
 			});
 			out.textContent = _('Press a button.');
 
-			function action(label, cmd, style) {
+			function action(label, cmd, style, confirmText) {
 				return E('button', {
 					'class': 'cbi-button ' + style,
 					'click': ui.createHandlerFn(this, function() {
+						if (confirmText && !window.confirm(confirmText))
+							return;
 						out.textContent = _('Running %s…').format(label);
 						return run(cmd).then(function(text) {
 							out.textContent = text || _('(no output)');
@@ -149,6 +151,16 @@ return view.extend({
 					]),
 					E('p', { 'class': 'cbi-value-description' }, [
 						_('Check network shows the relays, the NAT type (cone means direct calls work) and what is shared. It takes about 10 seconds.')
+					]),
+					E('h3', {}, [ _('Updates') ]),
+					E('div', {}, [
+						action(_('Check for updates'), 'update-check', 'cbi-button-action'), ' ',
+						action(_('Install update'), 'update-install', 'cbi-button-apply',
+							_('Install the version the update server offers now, and restart the gateway?'))
+					]),
+					E('p', { 'class': 'cbi-value-description' }, [
+						_('Asks the update server (its code is built in, or set update_server). Install update installs the offered version, also when the server says Ask, after checking it against the release signature, then restarts the gateway. ' +
+						  'The gateway also checks by itself every 6 hours and installs when the server says Install automatically.')
 					]),
 					out
 				])

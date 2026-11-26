@@ -13,6 +13,7 @@
   <nav id="tabs">
     <button data-tab="status" class="on">Status</button>
     <button data-tab="settings">Settings</button>
+    <button data-tab="updates">Updates</button>
     <button data-tab="log">Log</button>
   </nav>
   <div class="who"><span id="idle" title="Signed out after 30 minutes without activity"></span><button id="logout" class="link">Sign out</button></div>
@@ -104,6 +105,21 @@
       <div class="row"><button class="primary" type="submit">Save and restart</button><span id="set-saved" class="ok"></span></div>
       <p class="muted small">Saved in <code id="cfg-path"></code>. The gateway restarts with the new settings in a few seconds; this page stays signed in.</p>
     </form>
+  </section>
+
+  <!-- Updates -->
+  <section id="v-updates" hidden>
+    <div class="bar"><h2>Updates</h2></div>
+    <div id="upd-notice" class="card notice" hidden></div>
+    <div class="card">
+      <dl id="upd-info"></dl>
+      <div class="row">
+        <button id="upd-check">Check now</button>
+        <button id="upd-install" class="primary" hidden>Install</button>
+      </div>
+      <p class="muted small">The gateway asks its update server an hour after it starts and every 6 hours, and installs by itself when the server says <i>Install automatically</i>. <b>Install</b> installs the offered version now, also when the server says <i>Ask</i>. Every file is checked against the release's signature first. The gateway then restarts on the new version (sign in again).</p>
+      <p class="muted small">Turn self-update on or off, or set another update server, in Settings.</p>
+    </div>
   </section>
 
   <!-- Log -->

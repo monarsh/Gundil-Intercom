@@ -61,6 +61,7 @@ func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "configuration file")
 	check := flag.Bool("check", false, "check the network (relays, NAT, cameras) and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	install := flag.Bool("install", false, "update: also install what the update server offers")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `Usage: gundil-gateway [--config=FILE] [--check] [command]
 
@@ -69,6 +70,9 @@ Commands:
   reset-admin    start the web page's admin account afresh: a new one-time
                  password (in the log), which must be changed at the first
                  sign-in. Restarts the gateway service.
+  update         ask the update server now; with --install also install what
+                 it offers (checked against the release signature) and
+                 restart the gateway service. As root / Administrator.
   install        Windows: install and start the service (as Administrator)
   uninstall      Windows: remove the service
 
@@ -86,6 +90,19 @@ Commands:
 		return
 	case "uninstall":
 		exitOn(uninstallService())
+		return
+	case "update":
+		// "update --install": flags after the command too.
+		for _, a := range flag.Args()[1:] {
+			switch a {
+			case "--install", "-install":
+				*install = true
+			default:
+				flag.Usage()
+				os.Exit(2)
+			}
+		}
+		exitOn(updateCommand(*cfgPath, *install))
 		return
 	case "reset-admin":
 		cfg, err := parseConfig(*cfgPath)
@@ -165,20 +182,67 @@ func startGateway(cfg *config) (*gateway, error) {
 	return g, nil
 }
 
-// restartService restarts the installed gateway service (after
-// reset-admin), so it makes the new account; or says how.
-func restartService() {
+// updateCommand: "gundil-gateway update [--install]".
+func updateCommand(cfgPath string, install bool) error {
+	cfg, err := loadConfig(cfgPath)
+	if err != nil {
+		return err
+	}
+	st, err := loadState(cfg.StatePath)
+	if err != nil {
+		return err
+	}
+	g, err := newGateway(cfg, st, cfg.ScryptN)
+	if err != nil {
+		return err
+	}
+	defer g.stop()
+	log.SetOutput(io.Discard) // Just the answer below.
+	fmt.Printf("gundil-gateway %s: asking the update server…\n", version)
+	installed, err := g.updateNow(install)
+	if err != nil {
+		return err
+	}
+	u := g.updateState()
+	fmt.Println(u.Result)
+	switch {
+	case installed:
+		if err := restartGatewayService(); err != nil {
+			fmt.Printf("Installed; now restart the gateway (%v).\n", err)
+		} else {
+			fmt.Println("Restarted the gateway with the new version.")
+		}
+	case u.Offer != "" && !install:
+		fmt.Printf("Install it with: gundil-gateway update --install\n")
+	}
+	return nil
+}
+
+// restartGatewayService restarts the installed gateway service.
+func restartGatewayService() error {
 	var cmd *exec.Cmd
 	switch {
 	case runtime.GOOS == "windows":
 		cmd = exec.Command("powershell", "-NoProfile", "-Command", "Restart-Service "+svcSpec.name)
 	case isOpenWrt():
-		fmt.Println("On OpenWrt the gateway is set up in LuCI (Services > Gundil gateway); it has no web page of its own.")
-		return
+		cmd = exec.Command("/etc/init.d/gundil-gateway", "restart")
 	default:
 		cmd = exec.Command("systemctl", "restart", "gundil-gateway")
 	}
-	if err := cmd.Run(); err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%v %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// restartService restarts the installed gateway service (after
+// reset-admin), so it makes the new account; or says how.
+func restartService() {
+	if isOpenWrt() {
+		fmt.Println("On OpenWrt the gateway is set up in LuCI (Services > Gundil gateway); it has no web page of its own.")
+		return
+	}
+	if err := restartGatewayService(); err != nil {
 		fmt.Println("Now restart the gateway (sudo systemctl restart gundil-gateway, or Restart-Service GundilGateway on Windows); its log shows the new one-time password.")
 		return
 	}

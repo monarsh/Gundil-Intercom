@@ -108,6 +108,10 @@ async function load() {
       await loadStatus();
       poll(() => loadStatus(true), 5000);
     } else if (tab === 'settings') await loadSettings();
+    else if (tab === 'updates') {
+      await loadUpdates();
+      poll(() => loadUpdates(true), 5000);
+    }
     else if (tab === 'log') {
       await loadLog();
       poll(() => loadLog(true), 5000);
@@ -270,6 +274,89 @@ async function saveSettings(ev) {
   }
 }
 
+// -------------------------------------------------------------- updates
+
+let updOffer = null;
+
+async function loadUpdates(background) {
+  const u = await api('GET', 'update', undefined, { background });
+  const st = u.status || {};
+  updOffer = st.offer || null;
+  const last = st.lastCheck && u.lastCheckAgo != null ? `${duration(u.lastCheckAgo)} ago` : 'not yet';
+  rows($('#upd-info'), [
+    ['Version', u.version],
+    ['Self-update', u.enabled ? 'on' : 'off (Settings)'],
+    ['Update server', u.server || 'none set (Settings)'],
+    ['Signatures', u.signed ? 'checked (only signed releases are installed)' : 'not checked (a build without the release key)'],
+    ['Last check', last],
+    ['Result', st.busy ? (st.busy === 'installing' ? 'installing…' : 'checking…') : st.result || ''],
+    ['Offered', updOffer ? `${updOffer}${st.downgrade ? ' (older: downgrade)' : ''} · server says ${st.mode}` : null],
+  ]);
+  const busy = !!st.busy;
+  $('#upd-check').disabled = busy || !u.server || !u.status;
+  const inst = $('#upd-install');
+  inst.hidden = !updOffer;
+  inst.disabled = busy;
+  inst.textContent = updOffer ? `Install ${updOffer}` : 'Install';
+  const n = $('#upd-notice');
+  n.hidden = !!u.status;
+  if (!u.status) n.textContent = 'The gateway isn\'t running yet: set the intercom password or the home key in Settings first.';
+  return u;
+}
+
+async function checkUpdates() {
+  const b = $('#upd-check');
+  b.disabled = true;
+  b.textContent = 'Checking…';
+  try {
+    await api('POST', 'update/check');
+    await loadUpdates();
+  } catch (e) {
+    toast(e.message);
+    await loadUpdates().catch(() => {});
+  }
+  b.textContent = 'Check now';
+}
+
+async function installUpdate() {
+  if (!updOffer || !confirm(`Install version ${updOffer} on this gateway now? It restarts afterwards.`)) return;
+  try {
+    await api('POST', 'update/install');
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  stopPolling();
+  const n = $('#upd-notice');
+  n.hidden = false;
+  n.textContent = `Installing ${updOffer}… The gateway restarts when it's done; this page then asks you to sign in again.`;
+  // Wait for the restart: the page goes away, then comes back.
+  let wentAway = false;
+  const t = setInterval(async () => {
+    try {
+      const r = await fetch('/api/session', { headers: { 'X-Gundil': '1', 'X-Background': '1' } });
+      const s = await r.json();
+      if (!s.signedIn) {
+        clearInterval(t);
+        showLogin(wentAway ? 'The gateway restarted with the new version. Sign in again.' : 'Signed out.');
+      } else if (!wentAway) {
+        const u = await loadUpdates(true).catch(() => null);
+        const st = (u && u.status) || {};
+        n.hidden = false;
+        if (u && !st.busy && !(st.result || '').startsWith('installed')) {
+          // Done without installing: say why, and carry on.
+          clearInterval(t);
+          n.textContent = `Not installed: ${st.result || 'unknown error'}`;
+          poll(() => loadUpdates(true), 5000);
+        }
+      }
+    } catch (_) {
+      wentAway = true;
+      n.textContent = 'Restarting…';
+    }
+  }, 3000);
+}
+
 // ------------------------------------------------------------------ log
 
 async function loadLog(background) {
@@ -360,6 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const b of $$('#tabs button')) b.addEventListener('click', () => openTab(b.dataset.tab));
   $('#check').addEventListener('click', checkNetwork);
   $('#restart').addEventListener('click', restart);
+  $('#upd-check').addEventListener('click', checkUpdates);
+  $('#upd-install').addEventListener('click', installUpdate);
   $('#change-pw').addEventListener('click', () => showPassword(false));
   $('#f-settings').addEventListener('submit', saveSettings);
   for (const r of $('#f-settings').authMode) r.addEventListener('change', () => authMode(r.value));

@@ -283,8 +283,8 @@ same file for every router) and open **Services → Gundil gateway** in the
 router's web interface. Set the intercom password, or paste the **Home
 key** (pairing code) if your apps use none, tick **Share home cameras**,
 press **Save & Apply**. The page shows whether the gateway runs,
-and has **Check network**, **Show log** and **Restart** buttons, so no SSH
-is needed after installing:
+and has **Check network**, **Show log**, **Restart**, **Check for updates**
+and **Install update** buttons, so no SSH is needed after installing:
 
 ```sh
 scp gundil-gateway-*-openwrt-aarch64.ipk gundil-gateway-*-openwrt-luci.ipk root@192.168.1.1:/tmp/
@@ -337,6 +337,10 @@ from the internet). OpenWrt keeps its LuCI page instead.
   self-update and the update server. **Save and restart** writes them into the config file
   (comments kept) and restarts the gateway in place; the page stays signed
   in.
+- **Updates:** version, self-update and its server, the last check and what
+  the server offers; **Check now**, and **Install** (installs the offered
+  version now, also when the server says *Ask*; checked against the release
+  signature; the gateway then restarts on it).
 - **Log:** the gateway's recent log.
 - **Lost the password?** On the device: `sudo gundil-gateway reset-admin`
   (Windows: `gundil-gateway.exe reset-admin` as Administrator). It removes
@@ -345,6 +349,10 @@ from the internet). OpenWrt keeps its LuCI page instead.
   changes its address. Upgrading a gateway installed before the page: run
   `install.sh` (or `deploy-gateway.sh`) again once, so the page may save its
   settings.
+
+Over SSH on any of them: `gundil-gateway update` asks the update server
+what it offers, `gundil-gateway update --install` installs it and restarts
+the gateway (as root / Administrator).
 
 `gundil-gateway --check` shows the relays, the NAT type and the LAN it
 shares; `check_hosts = 192.168.1.50:554` in the config also tries a camera.

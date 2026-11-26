@@ -91,21 +91,34 @@ type updateOffer struct {
 	} `json:"target"`
 }
 
-func (g *gateway) runUpdates() {
+// updateTarget: the update server and this program's package; an error
+// says why self-update can't work here.
+func (g *gateway) updateTarget() (pub []byte, pkg string, err error) {
 	code := g.cfg.UpdateServer
 	if code == "" {
 		code = updateServer
 	}
-	if !g.cfg.Updates || code == "" {
+	if code == "" {
+		return nil, "", errors.New("no update server: set its server code (update_server)")
+	}
+	if pub, err = parseUpdateCode(code); err != nil {
+		return nil, "", err
+	}
+	if pkg = gatewayPackage(); pkg == "" {
+		return nil, "", fmt.Errorf("no gateway package for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	return pub, pkg, nil
+}
+
+func (g *gateway) runUpdates() {
+	if !g.cfg.Updates {
 		return
 	}
-	pub, err := parseUpdateCode(code)
+	pub, pkg, err := g.updateTarget()
 	if err != nil {
-		log.Printf("self-update off: %v", err)
-		return
-	}
-	pkg := gatewayPackage()
-	if pkg == "" {
+		if updateServer != "" || g.cfg.UpdateServer != "" {
+			log.Printf("self-update off: %v", err)
+		}
 		return
 	}
 	log.Printf("self-update on (checks the update server every 6 hours)")
@@ -117,13 +130,59 @@ func (g *gateway) runUpdates() {
 		return
 	}
 	for {
-		if err := g.updateOnce(pub, pkg); err != nil {
+		if installed, err := g.updateOnce(pub, pkg, installIfAuto); err != nil {
 			log.Printf("self-update: %v", err)
+		} else if installed {
+			restartForUpdate()
 		}
 		if !g.sleep(updateEvery) {
 			return
 		}
 	}
+}
+
+// restartForUpdate exits so the service manager starts the new program.
+func restartForUpdate() {
+	time.Sleep(500 * time.Millisecond)
+	os.Exit(75) // Not 0: systemd (Restart=on-failure), procd and Windows restart it.
+}
+
+// updateStatus: what the web page shows about self-update.
+type updateStatus struct {
+	LastCheck time.Time `json:"lastCheck"`
+	Result    string    `json:"result"` // What happened at the last check.
+	Offer     string    `json:"offer"`  // A version the server offers ("" none).
+	Mode      string    `json:"mode"`   // The server's off / ask / auto.
+	Busy      string    `json:"busy"`   // "checking", "installing" or "".
+	Downgrade bool      `json:"downgrade"`
+}
+
+func (g *gateway) updateState() updateStatus {
+	g.updMu.Lock()
+	defer g.updMu.Unlock()
+	return g.upd
+}
+
+func (g *gateway) setUpdate(f func(u *updateStatus)) {
+	g.updMu.Lock()
+	f(&g.upd)
+	g.updMu.Unlock()
+}
+
+// updateNow checks the update server now and, with [install], installs
+// what it offers (also when it says "ask": the admin chose to). True when a
+// new program was installed (the caller restarts).
+func (g *gateway) updateNow(install bool) (bool, error) {
+	pub, pkg, err := g.updateTarget()
+	if err != nil {
+		g.setUpdate(func(u *updateStatus) { u.LastCheck, u.Result = time.Now(), err.Error() })
+		return false, err
+	}
+	how := installNever
+	if install {
+		how = installAlways
+	}
+	return g.updateOnce(pub, pkg, how)
 }
 
 // updateSession opens an encrypted link to the update server.
@@ -192,10 +251,32 @@ wait:
 	return newPeerConn(link, linkSecret), nil
 }
 
-func (g *gateway) updateOnce(serverPub []byte, pkg string) error {
+type installPolicy int
+
+const (
+	installNever  installPolicy = iota // Only ask what's offered.
+	installIfAuto                      // The 6-hourly check: when the server says "auto".
+	installAlways                      // The admin pressed Install.
+)
+
+// updateOnce checks in with the update server and, per [how], downloads,
+// checks (SHA-256 and the release signature) and installs the offered
+// version. True when the new program is in place (restart to run it).
+func (g *gateway) updateOnce(serverPub []byte, pkg string, how installPolicy) (installed bool, err error) {
+	g.updRun.Lock() // One check at a time (timer, web page).
+	defer g.updRun.Unlock()
+	g.setUpdate(func(u *updateStatus) { u.Busy = "checking" })
+	defer func() {
+		g.setUpdate(func(u *updateStatus) {
+			u.Busy, u.LastCheck = "", time.Now()
+			if err != nil {
+				u.Result = err.Error()
+			}
+		})
+	}()
 	c, err := g.updateSession(serverPub)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer c.fail(nil)
 	c.send(jsonFrame(tUpdCheck, map[string]any{"id": g.selfID, "name": g.cfg.Name, "package": pkg,
@@ -204,29 +285,43 @@ func (g *gateway) updateOnce(serverPub []byte, pkg string) error {
 	select {
 	case f := <-c.frames:
 		if f.typ != tUpdInfo || json.Unmarshal(f.payload, &offer) != nil {
-			return errors.New("unexpected answer")
+			return false, errors.New("unexpected answer")
 		}
 	case <-c.closed:
-		return errors.New("the link closed")
+		return false, errors.New("the link closed")
 	case <-time.After(15 * time.Second):
-		return errors.New("no answer on the link")
+		return false, errors.New("no answer on the link")
 	}
 	t := offer.Target
 	if t == nil {
-		log.Printf("self-update: nothing to install%s", strings.TrimSuffix(" ("+offer.Message+")", " ()"))
-		return nil
-	}
-	if offer.Mode != "auto" {
-		log.Printf("self-update: the server offers %s (%s); set it to install automatically for gateways", t.Version, offer.Mode)
-		return nil
+		msg := "up to date (" + version + ")"
+		if offer.Mode == "off" {
+			msg = "the update server offers nothing to gateways (off)"
+		}
+		if offer.Message != "" {
+			msg += ": " + offer.Message
+		}
+		log.Printf("self-update: %s", msg)
+		g.setUpdate(func(u *updateStatus) { u.Result, u.Offer, u.Mode = msg, "", offer.Mode })
+		return false, nil
 	}
 	if err := verifyRelease(releaseKey, t.Sums, t.Sig, t.Asset, t.SHA256); err != nil {
-		return fmt.Errorf("refused %s: %v", t.Version, err)
+		g.setUpdate(func(u *updateStatus) { u.Offer, u.Mode = "", offer.Mode })
+		return false, fmt.Errorf("refused %s: %v", t.Version, err)
 	}
+	g.setUpdate(func(u *updateStatus) {
+		u.Offer, u.Mode, u.Downgrade = t.Version, offer.Mode, t.Downgrade
+		u.Result = fmt.Sprintf("version %s is available (%s)", t.Version, offer.Mode)
+	})
+	if how == installNever || (how == installIfAuto && offer.Mode != "auto") {
+		log.Printf("self-update: the server offers %s (%s)", t.Version, offer.Mode)
+		return false, nil
+	}
+	g.setUpdate(func(u *updateStatus) { u.Busy = "installing" })
 	log.Printf("self-update: installing %s", t.Version)
 	dir, err := os.MkdirTemp("", "gundil-update")
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer os.RemoveAll(dir)
 	file := filepath.Join(dir, filepath.Base(t.File))
@@ -240,22 +335,21 @@ func (g *gateway) updateOnce(serverPub []byte, pkg string) error {
 	}
 	if !got {
 		if t.URL == "" {
-			return errors.New("the file is not available")
+			return false, errors.New("the file is not available")
 		}
 		if err := fetchURL(t.URL, file); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if sum, _ := fileSHA256(file); sum != strings.ToLower(t.SHA256) {
-		return errors.New("the downloaded file is damaged (SHA-256)")
+		return false, errors.New("the downloaded file is damaged (SHA-256)")
 	}
 	if err := installGatewayFile(file); err != nil {
-		return err
+		return false, err
 	}
 	log.Printf("self-update: installed %s, restarting", t.Version)
-	time.Sleep(500 * time.Millisecond)
-	os.Exit(75) // Not 0: systemd (Restart=on-failure) and Windows restart it.
-	return nil
+	g.setUpdate(func(u *updateStatus) { u.Result = "installed " + t.Version + "; restarting" })
+	return true, nil
 }
 
 func receiveFile(c *peerConn, name, dst string, size int64) error {

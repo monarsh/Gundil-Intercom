@@ -323,3 +323,45 @@ func TestGatewayWebExtraSubnets(t *testing.T) {
 		t.Fatalf("reload: %+v %v", c, err)
 	}
 }
+
+func TestGatewayWebUpdates(t *testing.T) {
+	gt := newGWTest(t)
+	gt.signIn()
+	// Before the gateway runs: settings only, and no check.
+	code, u := gt.do("GET", "/api/update", nil)
+	if code != 200 || u["status"] != nil || u["version"] != version {
+		t.Fatalf("update status while waiting: %d %v", code, u)
+	}
+	if code, _ := gt.do("POST", "/api/update/check", nil); code != 409 {
+		t.Fatalf("check while waiting: %d", code)
+	}
+	go gt.w.runGateways(gt.cfg)
+	waitFor(t, "waiting state", func() bool { _, _, p := gt.w.current(); return p != "" })
+	installs := 0
+	gt.w.afterInstall = func() { installs++ }
+	save := map[string]any{"authMode": "home_key", "homeKey": pairingText(make([]byte, 32)), "name": "G", "updates": true}
+	if code, out := gt.do("POST", "/api/settings", save); code != 200 {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	waitFor(t, "the gateway", func() bool { g, _, _ := gt.w.current(); return g != nil })
+	// No update server in this build or the settings: the check says so.
+	code, out := gt.do("POST", "/api/update/check", nil)
+	if code != 502 || !strings.Contains(out["error"].(string), "no update server") {
+		t.Fatalf("check without a server: %d %v", code, out)
+	}
+	code, u = gt.do("GET", "/api/update", nil)
+	st, _ := u["status"].(map[string]any)
+	if code != 200 || st == nil || !strings.Contains(st["result"].(string), "no update server") || u["lastCheckAgo"] == nil {
+		t.Fatalf("status after the check: %d %v", code, u)
+	}
+	// Install with nothing offered: it runs, finds nothing, installs nothing.
+	if code, _ := gt.do("POST", "/api/update/install", nil); code != 202 {
+		t.Fatalf("install: %d", code)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if installs != 0 {
+		t.Fatal("installed without an update server")
+	}
+	g, _, _ := gt.w.current()
+	g.stop()
+}

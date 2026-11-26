@@ -104,6 +104,9 @@ type gatewayWeb struct {
 	log     *logRing
 	started time.Time
 	reload  chan struct{} // Restart the gateway with the saved settings.
+	// afterInstall runs when an update was installed (restartForUpdate;
+	// tests replace it).
+	afterInstall func()
 
 	mu      sync.Mutex
 	g       *gateway // nil while the password or home key is missing.
@@ -122,7 +125,7 @@ func newGatewayWeb(cfg *config, lr *logRing) (*gatewayWeb, error) {
 		log.Printf("*** (also in %s); you must choose a new password first.", accounts.path("initial-password.txt"))
 	}
 	return &gatewayWeb{portal: newPortal(accounts, cfg.ScryptN), cfgPath: cfg.Path, log: lr,
-		started: time.Now(), reload: make(chan struct{}, 1), cfg: cfg}, nil
+		started: time.Now(), reload: make(chan struct{}, 1), cfg: cfg, afterInstall: restartForUpdate}, nil
 }
 
 // setGateway: the gateway now running (nil: waiting for settings).
@@ -147,6 +150,9 @@ func (w *gatewayWeb) handler() http.Handler {
 	m.HandleFunc("POST /api/check", w.auth(false, w.apiCheck))
 	m.HandleFunc("GET /api/log", w.auth(false, w.apiLog))
 	m.HandleFunc("POST /api/restart", w.auth(false, w.apiRestart))
+	m.HandleFunc("GET /api/update", w.auth(false, w.apiUpdate))
+	m.HandleFunc("POST /api/update/check", w.auth(false, w.apiUpdateCheck))
+	m.HandleFunc("POST /api/update/install", w.auth(false, w.apiUpdateInstall))
 	root, _ := fs.Sub(gatewayWebFiles, "gwweb")
 	files := http.FileServer(http.FS(root))
 	m.HandleFunc("GET /style.css", func(rw http.ResponseWriter, r *http.Request) {
@@ -468,6 +474,68 @@ func (w *gatewayWeb) runGateways(cfgPath string) {
 		log.Printf("restarting the gateway with the new settings")
 		g.stop()
 	}
+}
+
+// apiUpdate: self-update's settings and the last check.
+func (w *gatewayWeb) apiUpdate(rw http.ResponseWriter, r *http.Request) {
+	g, cfg, _ := w.current()
+	out := map[string]any{"version": version, "enabled": cfg.Updates, "package": gatewayPackage(),
+		"signed": releaseKey != ""}
+	switch {
+	case cfg.UpdateServer != "":
+		out["server"] = "set in the settings"
+	case updateServer != "":
+		out["server"] = "built in"
+	default:
+		out["server"] = ""
+	}
+	if g != nil {
+		st := g.updateState()
+		out["status"] = st
+		if !st.LastCheck.IsZero() {
+			out["lastCheckAgo"] = int(time.Since(st.LastCheck).Seconds())
+		}
+	}
+	writeJSONResp(rw, 200, out)
+}
+
+// apiUpdateCheck asks the update server now (up to about half a minute).
+func (w *gatewayWeb) apiUpdateCheck(rw http.ResponseWriter, r *http.Request) {
+	g, _, problem := w.current()
+	if g == nil {
+		fail(rw, 409, "The gateway isn't running: "+problem)
+		return
+	}
+	if _, err := g.updateNow(false); err != nil {
+		fail(rw, 502, err.Error())
+		return
+	}
+	w.apiUpdate(rw, r)
+}
+
+// apiUpdateInstall installs what the server offers, in the background; the
+// gateway then restarts (the page signs in again).
+func (w *gatewayWeb) apiUpdateInstall(rw http.ResponseWriter, r *http.Request) {
+	g, _, problem := w.current()
+	if g == nil {
+		fail(rw, 409, "The gateway isn't running: "+problem)
+		return
+	}
+	if g.updateState().Busy != "" {
+		fail(rw, 409, "An update check is running; try again in a moment.")
+		return
+	}
+	log.Printf("web: update install by %s", clientIP(r))
+	go func() {
+		installed, err := g.updateNow(true)
+		if err != nil {
+			log.Printf("self-update: %v", err)
+		}
+		if installed && w.afterInstall != nil {
+			w.afterInstall()
+		}
+	}()
+	writeJSONResp(rw, 202, map[string]any{"started": true})
 }
 
 // restartGateway asks runGateways to start the gateway again with the file's

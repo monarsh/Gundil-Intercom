@@ -1,5 +1,6 @@
 #!/bin/sh
-# Helper for the LuCI page (luci-app-gundil-gateway): status, check, log, restart.
+# Helper for the LuCI page (luci-app-gundil-gateway): status, check, log,
+# restart, update-check, update-install.
 
 conf_from_uci() { # writes the gateway config from /etc/config/gundil to $1
 	. /lib/functions.sh
@@ -53,6 +54,19 @@ check)
 	/usr/bin/gundil-gateway --check --config="$f" 2>&1
 	rm -f "$f"
 	;;
+update-check|update-install)
+	f=/tmp/gundil-gateway-update.conf
+	if ! conf_from_uci "$f"; then
+		echo "Set the intercom password (10+ characters) or the home key, and press Save & Apply first."
+		exit 1
+	fi
+	if [ "$1" = update-install ]; then
+		/usr/bin/gundil-gateway --config="$f" update --install 2>&1
+	else
+		/usr/bin/gundil-gateway --config="$f" update 2>&1
+	fi
+	rm -f "$f"
+	;;
 log)
 	logread -e gundil-gateway 2>/dev/null | tail -n 200
 	;;
@@ -61,7 +75,7 @@ restart)
 	/etc/init.d/gundil-gateway restart 2>&1
 	;;
 *)
-	echo "usage: $0 status|check|log|restart" >&2
+	echo "usage: $0 status|check|log|restart|update-check|update-install" >&2
 	exit 2
 	;;
 esac
