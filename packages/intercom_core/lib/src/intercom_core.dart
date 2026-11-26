@@ -2897,6 +2897,12 @@ class IntercomCore {
         _onPairReply(id, f.json);
       case MessageType.key || MessageType.sealed:
         break; // Handled by PeerConnection.
+      case MessageType.updCheck ||
+          MessageType.updInfo ||
+          MessageType.updGet ||
+          MessageType.updData ||
+          MessageType.updEnd:
+        break; // Update-server links only.
     }
   }
 

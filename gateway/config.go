@@ -1,3 +1,5 @@
+//go:build !updateserver
+
 package main
 
 import (

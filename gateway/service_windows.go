@@ -14,7 +14,14 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-const serviceName = "GundilGateway"
+// serviceSpec: what the Windows service of this program is called and how
+// its configuration is checked (gundil-gateway or gundil-update-server).
+type serviceSpec struct {
+	name, display, description, firewall string
+	template                             string // Written when there is no config yet.
+	needsConfig                          bool   // Stop after writing the template.
+	check                                func(path string) error
+}
 
 type handler struct{ run func() }
 
@@ -41,11 +48,11 @@ func runAsService(run func()) bool {
 	if err != nil || !ok {
 		return false
 	}
-	if el, err := eventlog.Open(serviceName); err == nil {
+	if el, err := eventlog.Open(svcSpec.name); err == nil {
 		w := eventWriter{el}
 		logToEventLog(w)
 	}
-	svc.Run(serviceName, handler{run})
+	svc.Run(svcSpec.name, handler{run})
 	return true
 }
 
@@ -64,16 +71,19 @@ func installService(cfgPath string) error {
 	exe, _ = filepath.Abs(exe)
 	if !fileExists(cfgPath) {
 		os.MkdirAll(filepath.Dir(cfgPath), 0o700)
-		if err := os.WriteFile(cfgPath, []byte(configTemplate), 0o600); err != nil {
+		if err := os.WriteFile(cfgPath, []byte(svcSpec.template), 0o600); err != nil {
 			return err
 		}
-		// Only Administrators and SYSTEM may read it (it holds the password or home key).
+		// Only Administrators and SYSTEM may read it.
 		exec.Command("icacls", cfgPath, "/inheritance:r", "/grant:r",
 			"Administrators:F", "SYSTEM:F").Run()
-		fmt.Printf("Wrote %s: set the password or home_key there, then run install again.\n", cfgPath)
-		return nil
+		if svcSpec.needsConfig {
+			fmt.Printf("Wrote %s: set the password or home_key there, then run install again.\n", cfgPath)
+			return nil
+		}
+		fmt.Printf("Wrote %s.\n", cfgPath)
 	}
-	if _, err := loadConfig(cfgPath); err != nil {
+	if err := svcSpec.check(cfgPath); err != nil {
 		return err
 	}
 	m, err := mgr.Connect()
@@ -81,13 +91,13 @@ func installService(cfgPath string) error {
 		return fmt.Errorf("run as Administrator: %v", err)
 	}
 	defer m.Disconnect()
-	if s, err := m.OpenService(serviceName); err == nil {
+	if s, err := m.OpenService(svcSpec.name); err == nil {
 		s.Close()
 		return fmt.Errorf("already installed (uninstall first)")
 	}
-	s, err := m.CreateService(serviceName, exe, mgr.Config{
-		DisplayName: "Gundil Intercom gateway",
-		Description: "Lets the Gundil Intercom apps reach the cameras on this LAN over the internet.",
+	s, err := m.CreateService(svcSpec.name, exe, mgr.Config{
+		DisplayName: svcSpec.display,
+		Description: svcSpec.description,
 		StartType:   mgr.StartAutomatic,
 	}, "--config="+cfgPath)
 	if err != nil {
@@ -99,13 +109,13 @@ func installService(cfgPath string) error {
 		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: time.Minute},
 	}, 86400)
-	eventlog.InstallAsEventCreate(serviceName, eventlog.Error|eventlog.Warning|eventlog.Info)
+	eventlog.InstallAsEventCreate(svcSpec.name, eventlog.Error|eventlog.Warning|eventlog.Info)
 	exec.Command("netsh", "advfirewall", "firewall", "add", "rule",
-		"name=Gundil gateway", "dir=in", "action=allow", "program="+exe, "enable=yes").Run()
+		"name="+svcSpec.firewall, "dir=in", "action=allow", "program="+exe, "enable=yes").Run()
 	if err := s.Start(); err != nil {
 		return err
 	}
-	fmt.Println("Installed and started the GundilGateway service.")
+	fmt.Printf("Installed and started the %s service.\n", svcSpec.name)
 	return nil
 }
 
@@ -115,7 +125,7 @@ func uninstallService() error {
 		return fmt.Errorf("run as Administrator: %v", err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(serviceName)
+	s, err := m.OpenService(svcSpec.name)
 	if err != nil {
 		return fmt.Errorf("not installed")
 	}
@@ -124,8 +134,8 @@ func uninstallService() error {
 	if err := s.Delete(); err != nil {
 		return err
 	}
-	eventlog.Remove(serviceName)
-	exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=Gundil gateway").Run()
-	fmt.Println("Removed the GundilGateway service.")
+	eventlog.Remove(svcSpec.name)
+	exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+svcSpec.firewall).Run()
+	fmt.Printf("Removed the %s service.\n", svcSpec.name)
 	return nil
 }

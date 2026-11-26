@@ -108,6 +108,23 @@ enum MessageType {
   /// The answer: `{"ok": true, "key": hex}` or `{"ok": false, "reason"}`.
   pairReply(0x17),
 
+  /// Self-update links only (to the update server, see
+  /// `update/update_client.dart` and gateway/update_proto.go): the device's
+  /// check-in `{"id","name","package","version","os"}`...
+  updCheck(0x30),
+
+  /// ...the server's answer `{"mode","target":{...},"message"}`...
+  updInfo(0x31),
+
+  /// ...a file request `{"file","offset"}`...
+  updGet(0x32),
+
+  /// ...its bytes `[offset:8][bytes]`...
+  updData(0x33),
+
+  /// ...and its end `{"ok","error"}`.
+  updEnd(0x34),
+
   /// Key exchange, the first frame each side sends and the only plaintext
   /// one: `[version:1][X25519 public key:32]`.
   key(0x10),

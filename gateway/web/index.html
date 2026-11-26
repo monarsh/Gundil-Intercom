@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gundil Update Server</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header id="top" hidden>
+  <div class="brand">Gundil Update Server</div>
+  <nav id="tabs">
+    <button data-tab="devices" class="on">Devices</button>
+    <button data-tab="policy">Policy</button>
+    <button data-tab="versions">Versions</button>
+    <button data-tab="server">Server</button>
+  </nav>
+  <div class="who"><span id="idle" title="Signed out after 30 minutes without activity"></span><button id="logout" class="link">Sign out</button></div>
+</header>
+
+<main>
+  <!-- Sign in -->
+  <section id="v-login" class="card narrow" hidden>
+    <h1>Gundil Update Server</h1>
+    <p class="muted" id="login-note">Sign in as the admin.</p>
+    <form id="f-login">
+      <label>User name <input name="user" value="admin" autocomplete="username" readonly></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required autofocus></label>
+      <p class="error" id="login-error"></p>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <p class="muted small">After a new install or a reset, the one-time password is in the server's log (and in <code>initial-password.txt</code> in its data folder).</p>
+  </section>
+
+  <!-- Change password (forced after a new install) -->
+  <section id="v-password" class="card narrow" hidden>
+    <h1>Choose a new password</h1>
+    <p class="muted" id="pw-note">This is a new admin account: replace the one-time password before you continue.</p>
+    <form id="f-password">
+      <label>Current (one-time) password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password <input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label>New password again <input name="again" type="password" autocomplete="new-password" minlength="10" required></label>
+      <p class="muted small">At least 10 characters.</p>
+      <p class="error" id="pw-error"></p>
+      <div class="row"><button class="primary" type="submit">Change password</button><button type="button" id="pw-cancel" hidden>Cancel</button></div>
+    </form>
+  </section>
+
+  <!-- Devices -->
+  <section id="v-devices" hidden>
+    <div class="bar"><h2>Devices</h2><input id="dev-filter" type="search" placeholder="Filter by name, platform, version"><span id="dev-count" class="muted"></span></div>
+    <div class="table-wrap"><table id="dev-table"><thead><tr><th>Name</th><th>Platform</th><th>Version</th><th>Update</th><th>Last seen</th><th>Pin</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p class="muted small">Devices check in when the app starts and every 6 hours. A pin gives one device its own version (upgrade or downgrade); empty follows the policy.</p>
+  </section>
+
+  <!-- Policy -->
+  <section id="v-policy" hidden>
+    <div class="bar"><h2>Policy</h2></div>
+    <p class="muted">For each kind of device: which version it should run, and what it does about it. Pick an older version to downgrade.</p>
+    <form id="f-policy">
+      <div class="table-wrap"><table id="pol-table"><thead><tr><th>Devices</th><th>Version</th><th>Action</th><th>Running now</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small"><b>Off</b>: nothing happens. <b>Ask</b>: the app shows the update and the user installs it. <b>Install automatically</b>: installs when no call is on (Android still asks for one tap; iPhone and Mac can only show it).</p>
+      <p class="muted small">Versions before 1.9.1 can't update themselves: a device downgraded to one stays there until it's updated by hand. Android can't downgrade at all (it would have to be uninstalled, which deletes its settings).</p>
+      <p class="error" id="pol-error"></p>
+      <button class="primary" type="submit">Save policy</button> <span id="pol-saved" class="ok"></span>
+    </form>
+  </section>
+
+  <!-- Versions -->
+  <section id="v-versions" hidden>
+    <div class="bar"><h2>Versions</h2></div>
+    <div id="job" class="card notice" hidden></div>
+    <div class="cols">
+      <div class="card">
+        <h3>Add from GitHub</h3>
+        <p class="muted small" id="gh-repo"></p>
+        <button id="gh-load">Show releases</button>
+        <div id="gh-list"></div>
+        <fieldset id="gh-keep" hidden>
+          <legend>Keep copies on this server for</legend>
+          <div id="gh-keep-boxes"></div>
+          <p class="muted small">Devices then download from this server (your upload speed), or from GitHub when that fails. Without a copy they download from GitHub, checked against the SHA-256. A whole release is about 500 MB.</p>
+        </fieldset>
+      </div>
+      <div class="card">
+        <h3>Upload files</h3>
+        <p class="muted small">Release files with their original names, e.g. <code>Gundil_Intercom-1.9.1-android-arm64-v8a.apk</code>.</p>
+        <form id="f-upload"><input type="file" name="files" multiple required><button class="primary" type="submit">Upload</button></form>
+        <p id="up-status" class="muted small"></p>
+      </div>
+    </div>
+    <div id="ver-list"></div>
+  </section>
+
+  <!-- Server -->
+  <section id="v-server" hidden>
+    <div class="bar"><h2>Server</h2></div>
+    <div class="cols">
+      <div class="card">
+        <h3>Server code</h3>
+        <p class="muted small">Every app trusts only this server. Put this code into the GitHub repository variable <code>GUNDIL_UPDATE_SERVER</code> so it's built into every release, or paste it in an app under Settings → Updates.</p>
+        <code id="code" class="code"></code>
+        <div class="row"><button id="copy-code">Copy</button></div>
+        <img id="qr" alt="QR code of the server code" width="200" height="200">
+      </div>
+      <div class="card">
+        <h3>Network</h3>
+        <dl id="net"></dl>
+        <button id="check">Check network</button>
+        <h3>Account</h3>
+        <button id="change-pw">Change password</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Log</h3>
+      <pre id="log"></pre>
+      <button id="log-refresh">Refresh</button>
+    </div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

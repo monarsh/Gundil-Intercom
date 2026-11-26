@@ -1,3 +1,5 @@
+//go:build !updateserver
+
 // gundil-gateway: lets the Gundil Intercom apps reach the cameras on a home
 // LAN from anywhere, through public Nostr relays and UDP hole punching. It
 // runs on an OpenWrt router, a Raspberry Pi / Orange Pi, a Linux server or
@@ -12,6 +14,16 @@ import (
 )
 
 var version = "dev"
+
+var svcSpec = serviceSpec{
+	name:        "GundilGateway",
+	display:     "Gundil Intercom gateway",
+	description: "Lets the Gundil Intercom apps reach the cameras on this LAN over the internet.",
+	firewall:    "Gundil gateway",
+	template:    configTemplate,
+	needsConfig: true,
+	check:       func(p string) error { _, err := loadConfig(p); return err },
+}
 
 func main() {
 	cfgPath := flag.String("config", defaultConfigPath(), "configuration file")

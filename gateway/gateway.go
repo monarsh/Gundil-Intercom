@@ -1,3 +1,5 @@
+//go:build !updateserver
+
 package main
 
 // The gateway itself: shows up on the relays as an intercom that shares
