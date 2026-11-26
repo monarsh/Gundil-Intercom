@@ -308,7 +308,7 @@ func TestServerCode(t *testing.T) {
 }
 
 // Starting a download job must not reset the job's lock while it is held
-// ("fatal error: sync: unlock of unlocked mutex" in 1.9.1 and 1.9.2,
+// ("fatal error: sync: unlock of unlocked mutex" in 1.9.1 and 1.9.2's first build,
 // whenever a release was added with copies kept).
 func TestImportJobStart(t *testing.T) {
 	var j importJob
