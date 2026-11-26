@@ -128,6 +128,7 @@ void main() {
       expect(find.text('Updates'), findsNothing);
       expect(find.text('Check network'), findsNothing);
       expect(find.text('This device'), findsNothing);
+    expect(find.textContaining('Relays:'), findsNothing);
     },
   );
 }

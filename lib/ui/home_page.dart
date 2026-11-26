@@ -424,15 +424,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     value: share,
                     onChanged: (v) => setLocal(() => share = v),
                   ),
-                if (internet && service.internetMode) ...[
+                // Why it can't run, next to the settings that fix it. The
+                // relays and NAT are in ⋮ More → Check network.
+                if (internet &&
+                    service.internetMode &&
+                    service.internetProblem != null)
                   Text(
-                    service.internetProblem != null
-                        ? 'Not running: ${service.internetProblem}'
-                        : 'Relays: ${service.internetRelaysConnected} of '
-                              '${service.internetRelaysTotal} connected',
+                    'Not running: ${service.internetProblem}',
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
-                ],
               ],
             ),
           ),
@@ -567,9 +567,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (!open) return; // Closed while checking.
       setLocal(() {
         checking = false;
-        result = service.internetMode
-            ? _describeCheck(r)
-            : 'Internet calls are off: turn them on in Settings first.';
+        result = !service.internetMode
+            ? 'Internet calls are off: turn them on in Settings first.'
+            : r == null && service.internetProblem != null
+            ? 'Internet calls are not running: ${service.internetProblem}'
+            : _describeCheck(r);
       });
     }
 
