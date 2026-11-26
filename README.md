@@ -841,8 +841,13 @@ version is raised only when a release is actually made. A release can be
 rebuilt with more fixes under the same number shortly after it came out, but
 self-update compares version numbers, so devices that already installed the
 first build must install the rebuild by hand. The Android build number (`+N` in `pubspec.yaml`) goes up by one with
-every release. Test builds are `vX.Y.Z-test.N` (the update server ignores
-them). The version is kept equal in `pubspec.yaml`,
+every release. Every release is first tried on real devices from a **test build**: run the
+workflow by hand with `test` set to `vX.Y.Z-test.N`. It publishes a
+pre-release with the Android APKs, the gateway and the update server, named
+like a release, so the deploy scripts install it with `--version
+X.Y.Z-test.N`. Test builds aren't signed; the update server, self-update and
+"newest release" all skip them, and a test build counts as older than its
+release. The version is kept equal in `pubspec.yaml`,
 `packages/intercom_core/pubspec.yaml` and
 `packages/intercom_core/lib/src/version.dart` (checked by
 `test/version_test.dart`), with notes in

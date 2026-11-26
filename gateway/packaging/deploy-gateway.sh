@@ -97,7 +97,7 @@ latest_version() {
 resolve_version() {
 	[ -n "$VERSION" ] && return 0
 	if [ -n "$PKG" ]; then
-		VERSION=$(basename "$PKG" | sed -n 's/.*-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)-.*/\1/p')
+		VERSION=$(basename "$PKG" | sed -n 's/.*-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\(-test\.[0-9][0-9]*\)\{0,1\}\)-.*/\1/p')
 		[ -n "$VERSION" ] && return 0
 	fi
 	VERSION=$(latest_version)

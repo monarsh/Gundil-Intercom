@@ -192,3 +192,14 @@ func TestServerSelfUpdateWeb(t *testing.T) {
 		t.Fatalf("not installed: %+v", st.u.status())
 	}
 }
+
+// A test build (1.3.0-test.2) is older than its release.
+func TestServerSelfUpdateFromTestBuild(t *testing.T) {
+	old := version
+	version = "1.3.0-test.2"
+	defer func() { version = old }()
+	st := newSelfTest(t, "1.3.0")
+	if installed, err := st.u.install(); err != nil || !installed || read(t, st.exe) != "new program" {
+		t.Fatalf("1.3.0 must replace 1.3.0-test.2: %v %v", installed, err)
+	}
+}

@@ -13,7 +13,9 @@ apk --version 2>/dev/null | grep -q '^apk-tools 3' || {
 	exit 1
 }
 # apk wants a version like 1.9.0-r1.
+# A test build (1.12.0-test.1) becomes 1.12.0_pre1-r1: older than 1.12.0.
 case "$VERSION" in
+[0-9]*-test.[0-9]*) APKV="${VERSION%%-*}_pre${VERSION##*.}-r1" ;;
 [0-9]*) APKV="$VERSION-r1" ;;
 *) APKV="0.0.0_git-r0" ;;
 esac

@@ -179,7 +179,9 @@ func (u *selfUpdater) checkLocked() (err error) {
 		return fmt.Errorf("no release on GitHub (%s) has a server file for this platform (%s)", u.repo, suffix)
 	}
 	latest := strings.TrimPrefix(best.Tag, "v")
-	newer := compareVersions(latest, version) > 0
+	// A test build (1.12.0-test.1) is older than its release (1.12.0).
+	cmp := compareVersions(latest, version)
+	newer := cmp > 0 || (cmp == 0 && strings.Contains(version, "-"))
 	u.mu.Lock()
 	u.rel, u.ast = best, bestAsset
 	u.st.Latest, u.st.Available, u.st.Notes = latest, newer, best.Body
