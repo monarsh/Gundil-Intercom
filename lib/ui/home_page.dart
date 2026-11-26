@@ -668,6 +668,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// Every IPv4 address with its network interface, e.g.
+  /// "192.168.1.20 (wlan0)". The name tells what it is: on a phone with
+  /// Wi-Fi and mobile data off, the carrier's VoLTE link (rmnet…, ims…,
+  /// ccmni…) can still have one.
   static Future<List<String>> _localAddresses() async {
     try {
       final ifaces = await NetworkInterface.list(
@@ -675,7 +679,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       );
       return [
         for (final i in ifaces)
-          for (final a in i.addresses) a.address,
+          for (final a in i.addresses) '${a.address} (${i.name})',
       ];
     } catch (_) {
       return const [];
