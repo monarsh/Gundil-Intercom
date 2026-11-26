@@ -125,7 +125,7 @@ jobs:
           cache-dependency-path: gateway/go.sum
       - name: AppImage
         run: |
-          TAG="${{ inputs.release || github.ref_name }}"
+          TAG="${{ inputs.release || inputs.test || github.ref_name }}"
           case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
           gateway/packaging/server/build_appimage.sh "$V" "${{ vars.GUNDIL_RELEASE_KEY }}"
       - uses: actions/upload-artifact@v4
