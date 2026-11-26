@@ -129,6 +129,12 @@ final class MenuBar: NSObject, NSWindowDelegate, UNUserNotificationCenterDelegat
     case "show":
       showWindow()
       result(nil)
+    case "revealFile":
+      // Self-update: the new version, downloaded to Downloads.
+      if let path = call.arguments as? String {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+      }
+      result(nil)
     case "getLoginItem":
       if #available(macOS 13.0, *) {
         result(SMAppService.mainApp.status == .enabled)

@@ -23,6 +23,9 @@ type config struct {
 	Stun         []string
 	StatePath    string
 	CheckHosts   []string // --check: also try these host:port.
+	Updates      bool     // Self-update from the update server.
+	UpdateServer string   // Its code, instead of the built-in one.
+	UpdateDelay  int      // Tests: seconds before the first check.
 	AnyHost      bool     // Tests only.
 	TestSubnets  []string // Tests only: subnets to announce.
 	ScryptN      int      // Tests only.
@@ -60,7 +63,7 @@ func fileExists(p string) bool {
 
 func loadConfig(path string) (*config, error) {
 	c := &config{Relays: defaultRelays, Stun: defaultStunServers, StatePath: defaultStatePath(),
-		ScryptN: defaultScryptN}
+		ScryptN: defaultScryptN, Updates: true}
 	host, _ := os.Hostname()
 	c.Name = "Gateway " + host
 	f, err := os.Open(path)
@@ -115,6 +118,17 @@ func loadConfig(path string) (*config, error) {
 			}
 		case "state":
 			c.StatePath = v
+		case "updates":
+			c.Updates = !(v == "0" || strings.EqualFold(v, "false") || strings.EqualFold(v, "no"))
+		case "update_server":
+			if v != "" {
+				if _, err := parseUpdateCode(v); err != nil {
+					return nil, fmt.Errorf("update_server: %v (in %s)", err, path)
+				}
+			}
+			c.UpdateServer = v
+		case "test_update_delay":
+			fmt.Sscan(v, &c.UpdateDelay)
 		case "check_hosts":
 			c.CheckHosts = list()
 		case "test_subnets":
@@ -184,4 +198,9 @@ share_cameras = true
 
 # Optional: other Nostr relays (comma separated).
 # relays = wss://relay.damus.io, wss://nos.lol
+
+# Self-update from the update server (when this build has its code, or
+# update_server is set). The server decides the version.
+# updates = true
+# update_server = GUNDIL-UPDATE-...
 `

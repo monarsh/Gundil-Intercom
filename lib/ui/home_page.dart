@@ -1,3 +1,5 @@
+import '../src/app_updater.dart';
+import 'updates.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -30,10 +32,16 @@ import 'volume_sheet.dart';
 /// Pick Everyone or one peer and press CONNECT: a two-way audio line opens
 /// until either side hangs up.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.service, required this.settings});
+  const HomePage({
+    super.key,
+    required this.service,
+    required this.settings,
+    this.updater,
+  });
 
   final IntercomService service;
   final Settings settings;
+  final AppUpdater? updater;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -85,6 +93,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       _showMessage(e.message, error: e.error);
     });
+    _updateSub = widget.updater?.manager.changes.listen((_) => _onUpdate());
+  }
+
+  StreamSubscription<void>? _updateSub;
+  String? _announced;
+
+  /// The update server offers a version: say so once (with "ask"; with
+  /// "auto" it installs by itself, unless this platform can't).
+  void _onUpdate() {
+    final u = widget.updater;
+    final o = u?.manager.offer;
+    if (u == null || o == null || !mounted) return;
+    if (u.manager.state != UpdateState.available || _announced == o.version) {
+      return;
+    }
+    if (o.mode == 'auto' && u.manager.installable) return;
+    _announced = o.version;
+    _messenger.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(
+          o.downgrade
+              ? 'Your administrator asks to go back to version ${o.version}.'
+              : 'Gundil Intercom ${o.version} is available.',
+        ),
+        duration: const Duration(seconds: 12),
+        action: SnackBarAction(
+          label: u.manager.installable ? 'Install' : 'Details',
+          onPressed: () => u.manager.installable
+              ? u.manager.installNow()
+              : showUpdatesDialog(context, u),
+        ),
+      ),
+    );
   }
 
   void _showMessage(String message, {bool error = false}) {
@@ -107,6 +148,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _viewer.dispose();
     _video.dispose();
     _eventSub.cancel();
+    _updateSub?.cancel();
     _focus.dispose();
     super.dispose();
   }
@@ -261,6 +303,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     onChanged: (v) => setLocal(() => autostart = v),
                   ),
                 ],
+                if (widget.updater != null)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.system_update_outlined),
+                    title: const Text('Updates'),
+                    subtitle: Text(updateSummary(widget.updater!)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await showUpdatesDialog(ctx, widget.updater!);
+                      setLocal(() {});
+                    },
+                  ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Answer automatically'),

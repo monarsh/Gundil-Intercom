@@ -104,10 +104,46 @@ void main() {
         },
       ]),
     );
+    // A "new" gateway for this machine (linux x86_64), kept on the server.
+    final gwDir = Directory(
+      '${tmp.path}/gw-new/gundil-gateway-9.9.9-linux-x86_64',
+    )..createSync(recursive: true);
+    File('${gwDir.path}/gundil-gateway').writeAsStringSync('NEW GATEWAY');
+    const newName = 'gundil-gateway-9.9.9-linux-x86_64.tar.gz';
+    Directory('${data.path}/files/9.9.9').createSync(recursive: true);
+    await Process.run('tar', [
+      'czf',
+      '${data.path}/files/9.9.9/$newName',
+      '-C',
+      '${tmp.path}/gw-new',
+      'gundil-gateway-9.9.9-linux-x86_64',
+    ]);
+    final newBytes = File(
+      '${data.path}/files/9.9.9/$newName',
+    ).readAsBytesSync();
+    final versions =
+        jsonDecode(File('${data.path}/versions.json').readAsStringSync())
+            as List;
+    versions.insert(0, {
+      'version': '9.9.9',
+      'source': 'upload',
+      'added': DateTime.now().toUtc().toIso8601String(),
+      'files': [
+        {
+          'name': newName,
+          'asset': 'app-$newName',
+          'package': 'gateway-linux-x86_64',
+          'size': newBytes.length,
+          'sha256': _sha(newBytes),
+          'local': true,
+        },
+      ],
+    });
+    File('${data.path}/versions.json').writeAsStringSync(jsonEncode(versions));
     File('${data.path}/policy.json').writeAsStringSync(
       jsonEncode({
         'android': {'target': 'latest', 'mode': 'auto'},
-        'gateway': {'target': '1.9.1', 'mode': 'ask'},
+        'gateway': {'target': 'latest', 'mode': 'auto'},
       }),
     );
     final conf = File('${tmp.path}/server.conf')
@@ -204,7 +240,7 @@ test_scrypt_n = 16
     if (bin == null) return markTestSkipped('Go is not installed');
     final c = client('gateway-linux-arm64', '1.9.0');
     final offer = await c.check();
-    expect(offer.mode, 'ask');
+    expect(offer.mode, 'auto');
     expect(offer.local, isFalse);
     final f = await c.download(offer, Directory('${tmp.path}/dl2'));
     expect(await f.readAsBytes(), gwFile);
@@ -220,6 +256,47 @@ test_scrypt_n = 16
     await expectLater(c.download(offer, dir), throwsA(isA<UpdateException>()));
     expect(dir.listSync(), isEmpty);
   }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('the gateway updates itself and exits for a restart', () async {
+    if (bin == null) return markTestSkipped('Go is not installed');
+    if (Platform.isWindows || cpuName() != 'x86_64') {
+      return markTestSkipped('needs linux x86_64');
+    }
+    final gwBin = '${tmp.path}/gwbin/gundil-gateway';
+    Directory('${tmp.path}/gwbin').createSync();
+    final b = await Process.run(
+      'go',
+      ['build', '-o', gwBin, '.'],
+      workingDirectory: '../../gateway',
+      environment: {'GOTOOLCHAIN': 'local', 'CGO_ENABLED': '0'},
+    );
+    expect(b.exitCode, 0, reason: '${b.stderr}');
+    final conf = File('${tmp.path}/gw.conf')
+      ..writeAsStringSync('''
+password = correct horse battery
+name = Router
+relays = ${relay.url}
+stun = 127.0.0.1:${stun.port}, 127.0.0.1:${stun.port}
+state = ${tmp.path}/gw-state.json
+test_scrypt_n = 1024
+update_server = $code
+test_update_delay = 1
+''');
+    final gw = await Process.start(gwBin, ['--config=${conf.path}']);
+    final gwLog = StringBuffer();
+    gw.stdout.transform(utf8.decoder).listen(gwLog.write);
+    gw.stderr.transform(utf8.decoder).listen(gwLog.write);
+    final exit = await gw.exitCode.timeout(
+      const Duration(seconds: 40),
+      onTimeout: () {
+        gw.kill();
+        return -1;
+      },
+    );
+    expect(exit, 75, reason: gwLog.toString());
+    expect(gwLog.toString(), contains('installed 9.9.9'));
+    expect(File(gwBin).readAsStringSync(), 'NEW GATEWAY');
+  }, timeout: const Timeout(Duration(seconds: 120)));
 
   test('another server key gets no answer', () async {
     if (bin == null) return markTestSkipped('Go is not installed');

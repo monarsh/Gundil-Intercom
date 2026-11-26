@@ -78,6 +78,7 @@ func newGateway(cfg *config, st *state, scryptN int) (*gateway, error) {
 func (g *gateway) run() {
 	g.nostr.start()
 	go g.stun(true)
+	go g.runUpdates()
 	go func() {
 		for range time.Tick(5 * time.Minute) {
 			g.announce()

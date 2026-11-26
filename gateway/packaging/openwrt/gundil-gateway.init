@@ -8,12 +8,14 @@ USE_PROCD=1
 
 start_service() {
 	config_load gundil
-	local password home_key name share relays
+	local password home_key name share relays updates update_server
 	config_get password main password ''
 	config_get home_key main home_key ''
 	config_get name main name 'Home router'
 	config_get_bool share main share_cameras 0
 	config_get relays main relays ''
+	config_get_bool updates main updates 1
+	config_get update_server main update_server ''
 	if [ -z "$password" ] && [ -z "$home_key" ]; then
 		logger -t gundil-gateway "not started: set the intercom password (10+ characters) or the home key (pairing code from a paired app), in LuCI (Services > Gundil gateway) or: uci set gundil.main.home_key='GUNDIL-PAIR-...'; uci commit gundil"
 		return 1
@@ -30,6 +32,8 @@ start_service() {
 		echo "name = $name"
 		[ "$share" = 1 ] && echo "share_cameras = true" || echo "share_cameras = false"
 		[ -n "$relays" ] && echo "relays = $relays"
+		[ "$updates" = 1 ] && echo "updates = true" || echo "updates = false"
+		[ -n "$update_server" ] && echo "update_server = $update_server"
 	} > /var/etc/gundil-gateway.conf
 	procd_open_instance
 	procd_set_param command /usr/bin/gundil-gateway --config=/var/etc/gundil-gateway.conf

@@ -141,6 +141,8 @@ class GundilApp : Application() {
                         prefs(this).edit().putBoolean(PREF_BOOT, on).apply()
                         result.success(on)
                     }
+                    "supportedAbi" -> result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "")
+                    "installApk" -> result.success(installApk(call.argument<String>("path") ?: ""))
                     "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
                     "requestIgnoreBatteryOptimizations" -> {
                         requestIgnoreBatteryOptimizations()
@@ -250,6 +252,29 @@ class GundilApp : Application() {
     private fun releaseMulticastLock() {
         multicastLock?.let { if (it.isHeld) it.release() }
         multicastLock = null
+    }
+
+    // ---------------------------------------------------------- self-update
+
+    /**
+     * Hands a downloaded APK to Android's installer, which asks the user.
+     * Returns "started", or "permission" when the user must first allow
+     * this app to install apps (the settings page is opened).
+     */
+    private fun installApk(path: String): String {
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            val i = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(i)
+            return "permission"
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this, "$packageName.updates", java.io.File(path))
+        val i = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivity(i)
+        return "started"
     }
 
     // -------------------------------------------------------------- battery

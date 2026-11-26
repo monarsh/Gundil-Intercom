@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fvp/fvp.dart' as fvp;
 
 import 'src/app_log.dart';
+import 'src/app_updater.dart';
 import 'src/audio_routes.dart';
 import 'src/intercom_service.dart';
 import 'src/platform_bridge.dart';
@@ -97,14 +98,23 @@ Future<void> main() async {
       settings.micVolume = service.micVolume;
     }
   });
-  runApp(IntercomApp(service: service, settings: settings));
+  // Self-update from the update server (Settings → Updates).
+  final updater = await AppUpdater.create(settings, service);
+  updater.manager.start();
+  runApp(IntercomApp(service: service, settings: settings, updater: updater));
 }
 
 class IntercomApp extends StatelessWidget {
-  const IntercomApp({super.key, required this.service, required this.settings});
+  const IntercomApp({
+    super.key,
+    required this.service,
+    required this.settings,
+    this.updater,
+  });
 
   final IntercomService service;
   final Settings settings;
+  final AppUpdater? updater;
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +132,7 @@ class IntercomApp extends StatelessWidget {
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
-      home: HomePage(service: service, settings: settings),
+      home: HomePage(service: service, settings: settings, updater: updater),
     );
   }
 }

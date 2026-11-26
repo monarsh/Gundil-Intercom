@@ -45,6 +45,11 @@ class NodeConfig {
     'share-cameras':
         'Let intercoms outside reach the cameras on this LAN through this '
         'node (with internet = true): true/false (default false)',
+    'updates':
+        'Self-update from the update server: true/false (default true when '
+        'this build has a server code, or update-server is set)',
+    'update-server':
+        'Update server code (GUNDIL-UPDATE-...), instead of the one built in',
     'peers': 'Comma-separated host[:port] list to add by IP (optional)',
     'button-gpio':
         'GPIO number of the connect / hang-up button (e.g. 6 = PA6, pin 7)',

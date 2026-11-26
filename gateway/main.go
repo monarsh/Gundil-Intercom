@@ -58,6 +58,9 @@ func main() {
 
 func serve(cfgPath string, check bool) {
 	log.SetFlags(log.Ldate | log.Ltime)
+	if exe, err := os.Executable(); err == nil {
+		os.Remove(exe + ".old") // Left by a self-update on Windows.
+	}
 	cfg, err := loadConfig(cfgPath)
 	exitOn(err)
 	st, err := loadState(cfg.StatePath)

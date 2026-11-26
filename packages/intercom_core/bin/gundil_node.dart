@@ -221,6 +221,47 @@ Future<void> main(List<String> args) async {
         .listen(node.command);
   }
 
+  // ---------------------------------------------------------- self-update
+  final updateCode = cfg.str('update-server') ?? builtInUpdateServer;
+  if (cfg.flag('updates', fallback: true) &&
+      UpdateServerCode.tryParse(updateCode) != null) {
+    final pkg = switch (cpuName()) {
+      'aarch64' => 'node-arm64',
+      'arm' => 'node-arm',
+      _ => '',
+    };
+    if (pkg.isNotEmpty) {
+      final updates = UpdateManager(
+        serverCode: updateCode,
+        identity: () => UpdateIdentity(
+          id: state.deviceId,
+          name: name,
+          package: pkg,
+          version: appVersion,
+          os: osDescription(),
+        ),
+        installer: NodeInstaller(log),
+        downloadDir: Directory('${Directory.systemTemp.path}/gundil-update'),
+        isIdle: () => core.conversation == null,
+      );
+      updates.changes.listen((_) {
+        final o = updates.offer;
+        if (updates.state == UpdateState.available && o != null) {
+          log(
+            'Update server offers ${o.version} (${o.mode})'
+            '${o.mode == 'ask' ? ': type "update" to install it' : ''}',
+          );
+        } else if (updates.state == UpdateState.failed) {
+          log('Update: ${updates.error}');
+        }
+      });
+      updates.start();
+      node.onUpdate = () => updates.installNow();
+      cleanups.add(() async => updates.stop());
+      log('Self-update on (checks the update server every 6 hours)');
+    }
+  }
+
   // ------------------------------------------------------------- shutdown
   var stopping = false;
   Future<void> stop(ProcessSignal s) async {
@@ -250,6 +291,7 @@ class _Node {
   String targetName;
   GpioOutput? led;
   void Function()? onQuit;
+  void Function()? onUpdate;
 
   String _lastStatus = '';
   // Who was speaking, and when we last saw them speak (log each burst once).
@@ -395,6 +437,12 @@ class _Node {
       toggle();
     } else if (cmd == 'q' || cmd == 'quit') {
       onQuit?.call();
+    } else if (cmd == 'update') {
+      if (onUpdate == null) {
+        log('Self-update is off');
+      } else {
+        onUpdate!();
+      }
     } else if (cmd == 'a') {
       core.accept();
     } else if (cmd == 'd') {

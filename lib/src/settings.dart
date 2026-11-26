@@ -95,6 +95,14 @@ class Settings {
   String get homeKey => _prefs.getString('${_p}homeKey') ?? '';
   set homeKey(String v) => _prefs.setString('${_p}homeKey', v);
 
+  /// Self-update: on unless turned off in Settings → Updates.
+  bool get updatesEnabled => _prefs.getBool('${_p}updatesEnabled') ?? true;
+  set updatesEnabled(bool v) => _prefs.setBool('${_p}updatesEnabled', v);
+
+  /// Another update server code than the one built in ('' = built in).
+  String get updateServer => _prefs.getString('${_p}updateServer') ?? '';
+  set updateServer(String v) => _prefs.setString('${_p}updateServer', v);
+
   /// This device's Nostr key (hex), made the first time Internet calls run.
   String get internetKey => _prefs.getString('${_p}internetKey') ?? '';
   set internetKey(String v) => _prefs.setString('${_p}internetKey', v);
