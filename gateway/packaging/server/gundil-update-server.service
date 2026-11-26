@@ -1,0 +1,18 @@
+[Unit]
+Description=Gundil Intercom update server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gundil-update
+ExecStart=/opt/gundil-update-server/gundil-update-server --config=/etc/gundil-update-server.conf
+Restart=on-failure
+RestartSec=5
+StateDirectory=gundil-update-server
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -57,3 +57,4 @@ key.properties
 /gateway/gundil-gateway
 /gateway/dist/
 /gateway/build/
+/gateway/dist-server/

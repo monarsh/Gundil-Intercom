@@ -87,7 +87,11 @@ func (s *updateServer) stun(fresh bool) (*net.UDPAddr, string) {
 	}
 	s.public, s.nat = s.mux.stun.check(s.cfg.Stun)
 	s.stunAt = time.Now()
-	log.Printf("STUN: public address %v, NAT %s", s.public, s.nat)
+	if s.public != nil {
+		log.Printf("STUN: public address %v, NAT %s", s.public, s.nat)
+	} else {
+		log.Printf("STUN: no answer (no internet?)")
+	}
 	return s.public, s.nat
 }
 

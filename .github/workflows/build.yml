@@ -47,12 +47,16 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      - run: (cd gateway && go vet ./... && GOOS=windows go vet ./... && go test ./...)
-      - name: Build the packages
+      - run: |
+          cd gateway
+          go vet ./... && GOOS=windows go vet ./... && go test ./...
+          go vet -tags updateserver ./... && GOOS=windows go vet -tags updateserver ./... && go test -tags updateserver ./...
+      - name: Build the packages (gateway and update server)
         run: |
           TAG="${{ inputs.release || github.ref_name }}"
           case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
-          gateway/packaging/build.sh "$V"
+          gateway/packaging/build.sh "$V" "${{ vars.GUNDIL_UPDATE_SERVER }}"
+          gateway/packaging/build-server.sh "$V"
           echo "V=$V" >> "$GITHUB_ENV"
       - name: OpenWrt 25 packages (apk), and a test install
         run: |
@@ -64,12 +68,54 @@ jobs:
             apk info -L gundil-gateway
             apk del gundil-gateway
             test ! -e /usr/bin/gundil-gateway
-            chown -R '"$(id -u):$(id -g)"' dist
+            apk add --allow-untrusted --no-network "dist-server/gundil-update-server-$0-openwrt25-x86_64.apk"
+            gundil-update-server --version
+            test -f /www/gundil-update-server/index.html
+            apk del gundil-update-server
+            chown -R '"$(id -u):$(id -g)"' dist dist-server
           ' "$V"
+      - name: Update server starts and serves its page
+        run: |
+          set -euo pipefail
+          d=$(mktemp -d)
+          tar xzf "gateway/dist-server/gundil-update-server-$V-linux-x86_64.tar.gz" -C "$d"
+          printf 'listen = 127.0.0.1:18780\ndata_dir = %s/data\ntest_no_net = true\n' "$d" > "$d/s.conf"
+          "$d"/gundil-update-server-*/gundil-update-server --config="$d/s.conf" > "$d/log" 2>&1 &
+          sleep 3
+          curl -fsS http://127.0.0.1:18780/ | grep -q 'Gundil Update Server'
+          grep -q 'one-time password' "$d/log"
+          kill $!
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-gateway
           path: gateway/dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gundil-update-server
+          path: gateway/dist-server/*
+
+  server-appimage:
+    # The update server as an AppImage, built on each CPU.
+    needs: test
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - name: AppImage
+        run: |
+          TAG="${{ inputs.release || github.ref_name }}"
+          case "$TAG" in v*) V="${TAG#v}" ;; *) V=dev ;; esac
+          gateway/packaging/server/build_appimage.sh "$V"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gundil-update-server-appimage-${{ matrix.runner }}
+          path: gateway/dist-server/*.AppImage
 
   linux:
     needs: test
@@ -83,7 +129,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build linux --release
+      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
       - run: tar -C build/linux/x64/release -czf gundil-intercom-linux-x64.tar.gz bundle
       - uses: actions/upload-artifact@v4
         with:
@@ -107,7 +153,7 @@ jobs:
           git clone --depth 1 --branch 3.47.9 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - run: flutter --version
-      - run: flutter build linux --release
+      - run: flutter build linux --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
       - run: tar -C build/linux/arm64/release -czf gundil-intercom-linux-arm64.tar.gz bundle
       - uses: actions/upload-artifact@v4
         with:
@@ -130,7 +176,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
       - name: Bundle Visual C++ runtime (app-local)
         shell: pwsh
         run: |
@@ -196,8 +242,8 @@ jobs:
             echo "ANDROID_KEY_ALIAS=${KEY_ALIAS:-gundil}"
             echo "ANDROID_KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
           } >> "$GITHUB_ENV"
-      - run: flutter build apk --release --split-per-abi
-      - run: flutter build apk --release   # universal APK (all CPUs)
+      - run: flutter build apk --release --split-per-abi --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
+      - run: flutter build apk --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}   # universal APK (all CPUs)
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-intercom-android
@@ -217,7 +263,11 @@ jobs:
           cache: true
       - run: pip install ziglang
       - run: tool/build_node.sh arm
+        env:
+          GUNDIL_UPDATE_SERVER: ${{ vars.GUNDIL_UPDATE_SERVER }}
       - run: tool/build_node.sh arm64
+        env:
+          GUNDIL_UPDATE_SERVER: ${{ vars.GUNDIL_UPDATE_SERVER }}
       - uses: actions/upload-artifact@v4
         with:
           name: gundil-intercom-node-linux-arm
@@ -240,7 +290,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build ios --release --no-codesign
+      - run: flutter build ios --release --no-codesign --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
@@ -269,7 +319,7 @@ jobs:
           # Pinned: the tested toolchain (3.50 deprecates flutter/material).
           flutter-version: 3.47.9
           cache: true
-      - run: flutter build macos --release
+      - run: flutter build macos --release --dart-define=GUNDIL_UPDATE_SERVER=${{ vars.GUNDIL_UPDATE_SERVER }}
       - name: Package app
         run: |
           set -euo pipefail
@@ -332,7 +382,7 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.release != '')
-    needs: [linux, linux-arm64, windows, android, node, ios, macos, gateway]
+    needs: [linux, linux-arm64, windows, android, node, ios, macos, gateway, server-appimage]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -363,6 +413,12 @@ jobs:
           cp "$A/gundil-intercom-ios/gundil-intercom-ios-unsigned.ipa" "dist/Gundil_Intercom-$V-ios-unsigned.ipa"
           cp "$A/gundil-intercom-macos/gundil-intercom-macos.zip" "dist/Gundil_Intercom-$V-macos.zip"
           cp "$A"/gundil-gateway/gundil-gateway-* dist/
+          # GitHub releases have no folders: the app's files start with
+          # "app-", the update server's with "server-".
+          for f in dist/*; do mv "$f" "dist/app-$(basename "$f")"; done
+          for f in "$A"/gundil-update-server/* "$A"/gundil-update-server-appimage-*/*; do
+            cp "$f" "dist/server-$(basename "$f")"
+          done
           chmod +x dist/*.AppImage
           (cd dist && sha256sum * > SHA256SUMS.txt)
           # "What's new" for this tag (optional), then the general notes.

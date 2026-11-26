@@ -44,6 +44,7 @@ echo "==> Dart executable ($ARCH)"
 (cd "$ROOT/packages/intercom_core" && dart pub get >/dev/null &&
   dart compile exe bin/gundil_node.dart \
     --target-os linux --target-arch "$ARCH" \
+    -DGUNDIL_UPDATE_SERVER="${GUNDIL_UPDATE_SERVER:-}" \
     -o "$OUT/gundil-intercom-node")
 
 echo "==> Native audio library ($CC_CMD)"

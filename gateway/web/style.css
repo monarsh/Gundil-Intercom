@@ -25,6 +25,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -52,6 +53,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 h1 { font-size: 22px; margin: 0 0 8px; }
 h2 { font-size: 19px; margin: 0; }
 h3 { font-size: 16px; margin: 0 0 8px; }
+.card > button + h3, .card > dl + button + h3 { margin-top: 20px; }
 .card {
   background: var(--card);
   border: 1px solid var(--line);

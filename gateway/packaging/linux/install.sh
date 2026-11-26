@@ -10,6 +10,7 @@ CONF=/etc/gundil-gateway.conf
 if [ "$1" = "--uninstall" ]; then
 	systemctl disable --now gundil-gateway 2>/dev/null || true
 	rm -f /etc/systemd/system/gundil-gateway.service /usr/local/bin/gundil-gateway
+	rm -rf /opt/gundil-gateway
 	systemctl daemon-reload
 	userdel gundil-gateway 2>/dev/null || true
 	rm -rf /var/lib/gundil-gateway
@@ -17,9 +18,15 @@ if [ "$1" = "--uninstall" ]; then
 	exit 0
 fi
 
-install -m 755 gundil-gateway /usr/local/bin/gundil-gateway
 id gundil-gateway >/dev/null 2>&1 ||
 	useradd --system --no-create-home --shell /usr/sbin/nologin gundil-gateway
+# The service may replace its own program (self-update), so it lives in a
+# folder the service user owns.
+mkdir -p /opt/gundil-gateway
+install -m 755 gundil-gateway /opt/gundil-gateway/gundil-gateway
+chown -R gundil-gateway:gundil-gateway /opt/gundil-gateway
+rm -f /usr/local/bin/gundil-gateway
+ln -s /opt/gundil-gateway/gundil-gateway /usr/local/bin/gundil-gateway
 if [ ! -f "$CONF" ]; then
 	install -m 640 gundil-gateway.conf.example "$CONF"
 fi

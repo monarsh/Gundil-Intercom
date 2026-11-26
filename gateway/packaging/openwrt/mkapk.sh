@@ -91,4 +91,47 @@ apk mkpkg \
 	--script "post-upgrade:$S/luci-post-install" \
 	--files "$t" \
 	--output "$DIST/gundil-gateway-$VERSION-openwrt25-luci.apk"
+
+# The update server (build-server.sh leaves its trees in build/apk-server).
+if [ -d build/apk-server ]; then
+	cp -a build/apk-server "$S/server"
+	chown -R 0:0 "$S/server" 2>/dev/null || true
+	cat > "$S/srv-post-install" <<'X'
+#!/bin/sh
+[ -f /etc/openwrt_release ] || exit 0
+chmod 600 /etc/config/gundil-update 2>/dev/null
+/etc/init.d/gundil-update-server enable
+/etc/init.d/gundil-update-server restart
+exit 0
+X
+	cat > "$S/srv-pre-deinstall" <<'X'
+#!/bin/sh
+[ -f /etc/openwrt_release ] || exit 0
+/etc/init.d/gundil-update-server stop
+/etc/init.d/gundil-update-server disable
+exit 0
+X
+	chmod 755 "$S"/srv-*
+	mkdir -p dist-server
+	for name in aarch64 arm mipsel mips x86_64; do
+		t="$S/server/$name"
+		[ -d "$t" ] || continue
+		mkdir -p "$t/lib/apk/packages"
+		echo /etc/config/gundil-update > "$t/lib/apk/packages/gundil-update-server.conffiles"
+		apk mkpkg \
+			--info "name:gundil-update-server" \
+			--info "version:$APKV" \
+			--info "description:Update server for Gundil Intercom (STUN + UDP hole punching, no public IP; admin web page on port 8780). Static build for $name CPUs." \
+			--info "arch:noarch" \
+			--info "license:proprietary" \
+			--info "origin:gundil-update-server" \
+			--info "maintainer:Gundil Intercom" \
+			--script "post-install:$S/srv-post-install" \
+			--script "post-upgrade:$S/srv-post-install" \
+			--script "pre-deinstall:$S/srv-pre-deinstall" \
+			--files "$t" \
+			--output "dist-server/gundil-update-server-$VERSION-openwrt25-$name.apk"
+	done
+	ls -la dist-server/*.apk
+fi
 ls -la "$DIST"/*.apk

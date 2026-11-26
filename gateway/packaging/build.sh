@@ -1,9 +1,10 @@
 #!/bin/sh
 # Builds every gundil-gateway package into ../dist:
 #   linux tarballs (install.sh + systemd), OpenWrt .ipk, Windows zips.
-# Usage: packaging/build.sh VERSION
+# Usage: packaging/build.sh VERSION [UPDATE_SERVER_CODE]
 set -e
 VERSION=${1:?version}
+UPDATE_SERVER=${2:-} # Built in: the gateway updates itself from this server.
 cd "$(dirname "$0")/.."
 DIST=dist
 STAGE=build/apk # OpenWrt 25 (apk) file trees, packed by packaging/openwrt/mkapk.sh.
@@ -13,7 +14,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 build() { # os arch arm out
 	CGO_ENABLED=0 GOOS=$1 GOARCH=$2 GOARM=$3 GOMIPS=softfloat \
-		go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$4" .
+		go build -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.updateServer=$UPDATE_SERVER" -o "$4" .
 }
 
 conf_example() {

@@ -279,6 +279,69 @@ removes it.
 `gundil-gateway --check` shows the relays, the NAT type and the LAN it
 shares; `check_hosts = 192.168.1.50:554` in the config also tries a camera.
 
+## Self-update (update server)
+
+From 1.9.1 every Gundil Intercom can update itself, upgrade or downgrade,
+from **your own update server** (`gundil-update-server`). One server serves
+all installs worldwide; it needs **no public IP and no port forwarding**:
+the apps reach it like internet calls, through public Nostr relays, STUN and
+UDP hole punching.
+
+**The server** runs on a Linux PC or server (x86_64), a Raspberry Pi or
+Orange Pi, an OpenWrt router, a Windows PC (as a service) or as an AppImage.
+Its files are in each release under `server-…` (the apps' files are under
+`app-…`).
+
+- **Install** from your computer over SSH: `./deploy.sh root@192.168.1.1`
+  (in `server-gundil-update-server-VERSION-tools.zip`). It finds out whether
+  the target is Linux, OpenWrt or Windows and its CPU, uploads the right
+  package and installs it. `./deploy.sh --web-only user@host` copies only the
+  web page files (`web/`), for example after you changed them. By hand:
+  `sudo ./install.sh` (Linux), `apk add --allow-untrusted …openwrt25-….apk`
+  (OpenWrt 25), `gundil-update-server.exe install` (Windows, as
+  Administrator).
+- **Web page:** `http://<server>:8780`. There is one account, `admin`; no
+  other users can be created. After a new install it has a **one-time
+  password** (in the server's log and in `initial-password.txt` in its data
+  folder), which must be changed at the first sign-in before anything else.
+  The page **signs out after 30 minutes without activity**; 5 wrong passwords
+  lock the sign-in for 5 minutes.
+  - **Devices:** every device that checked in: name, platform, version, last
+    seen; **pin** one device to a version.
+  - **Policy:** per kind of device (Android, Windows, Mac, iPhone, Linux,
+    headless node, gateway) the version to run (newest, or a specific one:
+    older = **downgrade**) and the action: *Off*, *Ask* (the app shows it and
+    the user installs) or *Install automatically* (when no call is on).
+  - **Versions:** add releases from GitHub (optionally keep copies of the
+    files on the server), or upload release files.
+  - **Server:** the **server code**, the network check, the log, the password.
+- **Reset the portal:** `sudo gundil-reset-portal` gives a new admin account
+  with a new one-time password (devices and versions are kept); `--all` also
+  forgets devices, policy and versions; `--all --new-key` also makes a new
+  server key (every app then needs the new server code). Windows:
+  `reset-portal.ps1 [-All] [-NewKey]`.
+
+**The apps** trust only the server whose code they have. Put the server code
+(Server tab) into the GitHub repository variable `GUNDIL_UPDATE_SERVER`
+(Settings → Secrets and variables → Actions → Variables): every build is then
+made with it. Or paste it in an app: **Settings → Updates → Update server**.
+Devices check in a minute after start and every 6 hours (Settings → Updates
+→ Check now to ask at once). Every file is checked against the SHA-256 the
+server sends over the encrypted link; files come from the server when it
+keeps a copy, otherwise (or when that fails) from the GitHub release.
+
+| Device | Upgrade | Downgrade |
+|---|---|---|
+| Windows (installed) | installs silently and restarts (Windows asks for administrator approval) | yes |
+| Linux AppImage | replaces the file and restarts | yes |
+| Headless node, gundil-gateway | replace their program and restart (*Install automatically* only: nobody to ask) | yes |
+| Android | downloads; Android asks to tap **Install** | no (Android refuses an older version without uninstalling) |
+| Mac | the zip goes to Downloads and is shown in Finder (the app can't replace itself) | same |
+| iPhone, Windows portable, Linux tar.gz | shown only, install by hand | – |
+
+Versions before 1.9.1 can't update themselves: a device downgraded to one
+stays there until it's updated by hand.
+
 ## Orange Pi PC / Raspberry Pi (headless node)
 
 Small Linux boards with a microphone and a speaker can be intercom stations

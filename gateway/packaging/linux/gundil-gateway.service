@@ -5,13 +5,15 @@ Wants=network-online.target
 
 [Service]
 User=gundil-gateway
-ExecStart=/usr/local/bin/gundil-gateway --config=/etc/gundil-gateway.conf
+ExecStart=/opt/gundil-gateway/gundil-gateway --config=/etc/gundil-gateway.conf
 Restart=on-failure
 RestartSec=5
 StateDirectory=gundil-gateway
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+# Self-update replaces the program here.
+ReadWritePaths=/opt/gundil-gateway
 
 [Install]
 WantedBy=multi-user.target

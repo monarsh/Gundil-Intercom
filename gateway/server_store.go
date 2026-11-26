@@ -44,7 +44,7 @@ type device struct {
 	Address   string    `json:"address"`
 	FirstSeen time.Time `json:"firstSeen"`
 	LastSeen  time.Time `json:"lastSeen"`
-	Pin       string    `json:"pin,omitempty"`    // A version just for this device.
+	Pin       string    `json:"pin,omitempty"`     // A version just for this device.
 	Offered   string    `json:"offered,omitempty"` // What it was told last.
 	Fetched   string    `json:"fetched,omitempty"` // The last file it downloaded from here.
 }
