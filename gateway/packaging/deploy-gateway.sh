@@ -21,12 +21,13 @@
 # they stay out of your shell history), or read from GUNDIL_HOME_KEY /
 # GUNDIL_PASSWORD.
 #
-# Without --package it uses a matching package in this folder, or downloads
-# it from the GitHub release (the newest one unless --version is given).
+# Without --version it installs the newest release. It uses a package of
+# that version from this folder, or downloads it from the GitHub release.
 # Runs on Linux, macOS, WSL or Git Bash.
 set -eu
 
-VERSION=@VERSION@
+BUILT=@VERSION@ # The release this script came with.
+VERSION=
 REPO=${GUNDIL_REPO:-monarsh/Gundil-Intercom}
 HERE=$(cd "$(dirname "$0")" && pwd)
 PKG=
@@ -35,7 +36,7 @@ CHECK=1
 SET=$(mktemp)
 trap 'rm -f "$SET"' EXIT
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 ask_secret() { # prompt -> value on stdout
 	printf '%s: ' "$1" >&2
 	stty -echo 2>/dev/null || true
@@ -78,9 +79,34 @@ while [ $# -gt 0 ]; do
 	shift
 done
 [ -n "$TARGET" ] || usage
-case "$VERSION" in @*) VERSION= ;; esac
+case "$BUILT" in @*) BUILT= ;; esac
 
 say() { printf '==> %s\n' "$*"; }
+
+# The newest release on GitHub (empty when GitHub can't be reached).
+latest_version() {
+	curl -fsSL --max-time 20 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null |
+		sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1
+}
+# VERSION: --version, else the one in --package's name, else the newest
+# release, else (offline) the version this script came with.
+resolve_version() {
+	[ -n "$VERSION" ] && return 0
+	if [ -n "$PKG" ]; then
+		VERSION=$(basename "$PKG" | sed -n 's/.*-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)-.*/\1/p')
+		[ -n "$VERSION" ] && return 0
+	fi
+	VERSION=$(latest_version)
+	if [ -n "$VERSION" ]; then
+		say "Newest release: $VERSION"
+	elif [ -n "$BUILT" ]; then
+		VERSION=$BUILT
+		say "Can't reach GitHub; using $VERSION (this script's version)"
+	else
+		echo "Can't reach GitHub to find the newest release; say which: --version X.Y.Z"
+		exit 1
+	fi
+}
 remote() { ssh -o ConnectTimeout=10 "$TARGET" "$@"; }
 
 say "Looking at $TARGET"
@@ -117,12 +143,10 @@ esac
 say "$KIND device ($INFO)"
 
 # ------------------------------------------------------------- the package
-find_local() { # name-suffix -> path of a matching local file
+find_local() { # name-suffix -> path of a local file of $VERSION
 	for dir in "$HERE" .; do
-		for f in "$dir"/app-gundil-gateway-*-"$1" "$dir"/gundil-gateway-*-"$1"; do
-			[ -f "$f" ] || continue
-			case "$f" in *-"${VERSION:-}"-"$1") echo "$f"; return ;; esac
-			[ -z "$VERSION" ] && { echo "$f"; return; }
+		for f in "$dir/app-gundil-gateway-$VERSION-$1" "$dir/gundil-gateway-$VERSION-$1"; do
+			[ -f "$f" ] && { echo "$f"; return 0; }
 		done
 	done
 	return 0
@@ -131,13 +155,9 @@ fetch() { # name -> downloaded path
 	out=${TMPDIR:-/tmp}/$1
 	curl -fL --progress-bar -o "$out" "https://github.com/$REPO/releases/download/v$VERSION/$1" && echo "$out"
 }
+resolve_version
 [ -n "$PKG" ] || PKG=$(find_local "$VARIANT")
 if [ -z "$PKG" ]; then
-	if [ -z "$VERSION" ]; then
-		VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
-			sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)
-		[ -n "$VERSION" ] || { echo "Can't find the newest release; say which: --version 1.9.2"; exit 1; }
-	fi
 	say "Downloading gundil-gateway $VERSION ($VARIANT)"
 	PKG=$(fetch "app-gundil-gateway-$VERSION-$VARIANT") || { echo "No such file in release v$VERSION"; exit 1; }
 fi
@@ -155,7 +175,7 @@ openwrt)
 	fi
 	if remote 'test -d /www/luci-static/resources/view' 2>/dev/null; then
 		LPKG=$(find_local "$FAM-luci.$EXT")
-		[ -n "$LPKG" ] || [ -z "$VERSION" ] || LPKG=$(fetch "app-gundil-gateway-$VERSION-$FAM-luci.$EXT" 2>/dev/null) || LPKG=
+		[ -n "$LPKG" ] || LPKG=$(fetch "app-gundil-gateway-$VERSION-$FAM-luci.$EXT" 2>/dev/null) || LPKG=
 		if [ -n "$LPKG" ]; then
 			say "Installing the LuCI page (Services > Gundil gateway)"
 			remote "cat > /tmp/gundil-gateway-luci.$EXT" < "$LPKG"

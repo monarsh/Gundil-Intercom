@@ -7,13 +7,15 @@
 #   ./deploy.sh root@192.168.1.1                 install or upgrade
 #   ./deploy.sh --web-only pi@192.168.1.20       only the web page files (./web)
 #   ./deploy.sh --package FILE user@host         a package you already have
-#   ./deploy.sh --version 1.9.2 user@host        another release
+#   ./deploy.sh --version 1.9.2 user@host        a given release
 #
-# Without --package it uses a matching server package in this folder, or
-# downloads it from the GitHub release. Runs on Linux, macOS, WSL or Git Bash.
+# Without --version it installs the newest release. It uses a server package
+# of that version from this folder, or downloads it from the GitHub release.
+# Runs on Linux, macOS, WSL or Git Bash.
 set -eu
 
-VERSION=@VERSION@
+BUILT=@VERSION@ # The release this script came with.
+VERSION=
 REPO=${GUNDIL_REPO:-monarsh/Gundil-Intercom}
 HERE=$(cd "$(dirname "$0")" && pwd)
 WEB_ONLY=0
@@ -25,7 +27,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	--web-only) WEB_ONLY=1 ;;
 	--package) PKG=${2:?}; shift ;;
-	--version) VERSION=${2:?}; shift ;;
+	--version) VERSION=${2#v}; shift ;;
 	-h|--help) usage ;;
 	-*) echo "Unknown option $1"; usage ;;
 	*) TARGET=$1 ;;
@@ -33,9 +35,34 @@ while [ $# -gt 0 ]; do
 	shift
 done
 [ -n "$TARGET" ] || usage
-case "$VERSION" in @*) VERSION= ;; esac
+case "$BUILT" in @*) BUILT= ;; esac
 
 say() { printf '==> %s\n' "$*"; }
+
+# The newest release on GitHub (empty when GitHub can't be reached).
+latest_version() {
+	curl -fsSL --max-time 20 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null |
+		sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1
+}
+# VERSION: --version, else the one in --package's name, else the newest
+# release, else (offline) the version this script came with.
+resolve_version() {
+	[ -n "$VERSION" ] && return 0
+	if [ -n "$PKG" ]; then
+		VERSION=$(basename "$PKG" | sed -n 's/.*-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)-.*/\1/p')
+		[ -n "$VERSION" ] && return 0
+	fi
+	VERSION=$(latest_version)
+	if [ -n "$VERSION" ]; then
+		say "Newest release: $VERSION"
+	elif [ -n "$BUILT" ]; then
+		VERSION=$BUILT
+		say "Can't reach GitHub; using $VERSION (this script's version)"
+	else
+		echo "Can't reach GitHub to find the newest release; say which: --version X.Y.Z"
+		exit 1
+	fi
+}
 remote() { ssh -o ConnectTimeout=10 "$TARGET" "$@"; }
 
 say "Looking at $TARGET"
@@ -91,17 +118,15 @@ if [ "$WEB_ONLY" = 1 ]; then
 fi
 
 # -------------------------------------------------------------- the package
+resolve_version
 if [ -z "$PKG" ]; then
 	for dir in "$HERE" .; do
-		for f in "$dir"/server-gundil-update-server-*-"$VARIANT" "$dir"/gundil-update-server-*-"$VARIANT"; do
-			[ -f "$f" ] || continue
-			case "$f" in *-"${VERSION:-}"-"$VARIANT") PKG=$f; break 2 ;; esac
-			[ -z "$VERSION" ] && { PKG=$f; break 2; }
+		for f in "$dir/server-gundil-update-server-$VERSION-$VARIANT" "$dir/gundil-update-server-$VERSION-$VARIANT"; do
+			[ -f "$f" ] && { PKG=$f; break 2; }
 		done
 	done
 fi
 if [ -z "$PKG" ]; then
-	[ -n "$VERSION" ] || { echo "Say which release: --version 1.9.1"; exit 1; }
 	NAME=server-gundil-update-server-$VERSION-$VARIANT
 	PKG=${TMPDIR:-/tmp}/$NAME
 	say "Downloading $NAME"
@@ -131,7 +156,7 @@ openwrt)
 		for dir in "$HERE" .; do
 			for f in "$dir/server-$LNAME" "$dir/$LNAME"; do [ -f "$f" ] && { LPKG=$f; break 2; }; done
 		done
-		if [ -z "$LPKG" ] && [ -n "$VERSION" ]; then
+		if [ -z "$LPKG" ]; then
 			LPKG=${TMPDIR:-/tmp}/server-$LNAME
 			curl -fsSL -o "$LPKG" "https://github.com/$REPO/releases/download/v$VERSION/server-$LNAME" || LPKG=
 		fi

@@ -18,7 +18,8 @@ OpenWrt:     apk add --allow-untrusted gundil-update-server-*-openwrt25-<cpu>.ap
 Windows:     unzip, then as Administrator:  gundil-update-server.exe install
 AppImage:    chmod +x gundil-update-server-*.AppImage && ./gundil-update-server-*.AppImage
 From your computer over SSH (any of the above):
-             ./deploy.sh root@192.168.1.1
+             ./deploy.sh root@192.168.1.1     (the newest release;
+             --version X.Y.Z for another one)
 It can share a machine with gundil-gateway (e.g. the same OpenWrt router):
 separate programs, settings and data; only TCP 8780 (admin page) is fixed.
 

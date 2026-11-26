@@ -235,8 +235,8 @@ networks), never to the internet or to itself.
 **From your computer over SSH** (any of the devices below):
 `gateway/packaging/deploy-gateway.sh root@192.168.1.1 --home-key` finds out
 whether the device runs OpenWrt (opkg or apk), Linux or Windows and its CPU,
-downloads the matching package of the newest release (or `--version X.Y.Z`,
-or `--package FILE`), installs it (with the LuCI page on OpenWrt), saves the
+downloads the matching package of the **newest release** (or `--version
+X.Y.Z`, or `--package FILE`; without GitHub it uses its own version), installs it (with the LuCI page on OpenWrt), saves the
 settings you give (`--home-key` or `--password`, which it asks for,
 `--name`, `--share-cameras yes|no`, `--update-server CODE`; other settings are
 kept), restarts the gateway and runs the network check. Running it again
@@ -320,7 +320,8 @@ admin page (TCP 8780).
 - **Install** from your computer over SSH: `./deploy.sh root@192.168.1.1`
   (in `server-gundil-update-server-VERSION-tools.zip`). It finds out whether
   the target is Linux, OpenWrt or Windows and its CPU, uploads the right
-  package and installs it. `./deploy.sh --web-only user@host` copies only the
+  package of the **newest release** (or `--version X.Y.Z`; without GitHub it
+  uses its own version) and installs it. `./deploy.sh --web-only user@host` copies only the
   web page files (`web/`), for example after you changed them. By hand:
   `sudo ./install.sh` (Linux), `apk add --allow-untrusted …openwrt25-….apk`
   (OpenWrt 25), `gundil-update-server.exe install` (Windows, as
