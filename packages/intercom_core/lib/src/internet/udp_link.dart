@@ -60,14 +60,36 @@ class _Punch {
 /// The app's one UDP socket for the internet.
 class UdpMux {
   UdpMux._(this.socket) : stun = StunClient(socket) {
-    socket.listen((e) {
-      if (e != RawSocketEvent.read) return;
-      Datagram? d;
-      while ((d = socket.receive()) != null) {
-        _onPacket(d!);
-      }
-    });
+    socket.listen(
+      (e) {
+        if (e == RawSocketEvent.closed) {
+          _dead = true;
+          return;
+        }
+        if (e != RawSocketEvent.read) return;
+        Datagram? d;
+        while ((d = socket.receive()) != null) {
+          _onPacket(d!);
+        }
+      },
+      // A network switch can break the socket (the address it used is
+      // gone): the owner then makes a new one (see [dead]).
+      onError: (Object e) {
+        _errors++;
+        if (_errors >= 3) _dead = true;
+      },
+      onDone: () => _dead = true,
+    );
   }
+
+  bool _dead = false;
+  int _errors = 0;
+
+  /// The system closed or broke the socket: make a new [UdpMux].
+  bool get dead => _dead || _closed;
+
+  /// No call and no hole punch uses it (safe to close).
+  bool get idle => _links.isEmpty && _punches.isEmpty;
 
   static Future<UdpMux> bind({int port = 0}) async {
     final s = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
@@ -87,7 +109,10 @@ class UdpMux {
     if (_closed) return;
     try {
       socket.send(data, to, port);
-    } catch (_) {}
+    } catch (_) {
+      _errors++;
+      if (_errors >= 3) _dead = true;
+    }
   }
 
   static Uint8List _header(int kind, int connId, int extra) {

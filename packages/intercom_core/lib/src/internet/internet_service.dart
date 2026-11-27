@@ -65,6 +65,9 @@ class InternetService {
   final void Function(UdpTransport link) onIncoming;
 
   UdpMux? _mux;
+
+  /// For tests: the UDP socket in use now.
+  UdpMux? get muxForTest => _mux;
   Rendezvous? _rv;
   Timer? _refresh;
   Duration _refreshEvery = const Duration(minutes: 5);
@@ -91,6 +94,7 @@ class InternetService {
   Future<void> start() async {
     final mux = await UdpMux.bind();
     _mux = mux;
+    _stopped = false;
     final rv = Rendezvous(
       client: NostrClient(relays: relays),
       keys: keys,
@@ -118,12 +122,57 @@ class InternetService {
     rv.announce(presence());
   }
 
+  /// The UDP socket, made anew when the system broke the old one.
+  Future<UdpMux?> _currentMux() async {
+    final mux = _mux;
+    if (mux == null || _stopped || !mux.dead) return mux;
+    _log('UDP socket broken: making a new one');
+    return _rebind();
+  }
+
+  /// A new UDP socket (after a network switch, the old one is tied to the
+  /// old network). The old one stays for calls still on it, then closes.
+  Future<UdpMux?> _rebind() async {
+    final old = _mux;
+    final UdpMux fresh;
+    try {
+      fresh = await UdpMux.bind();
+    } catch (e) {
+      _log('could not open a new UDP socket: $e');
+      return old;
+    }
+    if (_stopped) {
+      fresh.close();
+      return null;
+    }
+    _mux = fresh;
+    if (old != null) _retire(old);
+    _log('new UDP socket (port ${fresh.port})');
+    return fresh;
+  }
+
+  /// Closes [old] once no call uses it, after 5 minutes at the latest.
+  void _retire(UdpMux old) {
+    if (old.idle || old.dead) {
+      old.close();
+      return;
+    }
+    var waited = 0;
+    Timer.periodic(const Duration(seconds: 15), (t) {
+      waited += 15;
+      if (old.idle || old.dead || waited >= 300 || _stopped) {
+        t.cancel();
+        old.close();
+      }
+    });
+  }
+
   Future<(StunResult?, NatType)> _stun({bool fresh = false}) async {
     final c = _stunCache;
     if (!fresh && c != null && DateTime.now().difference(c.$1).inSeconds < 60) {
       return (c.$2, c.$3);
     }
-    final mux = _mux;
+    final mux = await _currentMux();
     if (mux == null) return (null, NatType.unknown);
     final (r, nat) = await mux.stun.check(
       servers: stunServers,
@@ -147,9 +196,9 @@ class InternetService {
     }
   }
 
-  /// Our public address from STUN, then LAN addresses (same port).
-  Future<List<String>> _candidates() async {
-    final mux = _mux!;
+  /// Our public address from STUN, then LAN addresses (same port), for
+  /// [mux].
+  Future<List<String>> _candidates(UdpMux mux) async {
     final (pub, _) = await _stun();
     return [
       if (pub != null) pub.toString(),
@@ -181,7 +230,7 @@ class InternetService {
 
   /// Sets up a direct link to [peerId]: offer, answer, punch.
   Future<UdpTransport> connect(String peerId, {String? name}) async {
-    final rv = _rv, mux = _mux;
+    final rv = _rv, mux = await _currentMux();
     if (rv == null || mux == null) {
       throw InternetException('internet mode is off');
     }
@@ -190,7 +239,7 @@ class InternetService {
     final answer = Completer<Signal>();
     _answers[sid] = answer;
     try {
-      final cands = await _candidates();
+      final cands = await _candidates(mux);
       final sent = rv.send(
         Signal(
           from: selfId,
@@ -237,10 +286,10 @@ class InternetService {
         final c = _answers[s.sid];
         if (c != null && !c.isCompleted) c.complete(s);
       case 'offer':
-        final rv = _rv, mux = _mux;
+        final rv = _rv, mux = await _currentMux();
         if (rv == null || mux == null) return;
         _log('offer from ${s.from}: answering and punching');
-        final cands = await _candidates();
+        final cands = await _candidates(mux);
         rv.send(
           Signal(
             from: selfId,
@@ -265,9 +314,29 @@ class InternetService {
   }
 
   /// The device moved to another network: its public address changed.
+  ///
+  /// A new UDP socket: the old one is tied to the old network (on phones
+  /// switching Wi-Fi ⇄ mobile data it may stop working, and STUN then
+  /// never answers until internet calls are turned off and on). STUN is
+  /// asked again, and again after 3 and 10 s while the new network comes
+  /// up.
   void networkChanged() {
+    if (_stopped) return;
     _stunCache = null;
-    unawaited(_stun());
+    unawaited(() async {
+      await _rebind();
+      for (final wait in const [
+        Duration.zero,
+        Duration(seconds: 3),
+        Duration(seconds: 10),
+      ]) {
+        if (_stopped) return;
+        await Future<void>.delayed(wait);
+        final (r, _) = await _stun(fresh: true);
+        if (r != null) break;
+      }
+      announce();
+    }());
     announce();
   }
 

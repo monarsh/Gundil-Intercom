@@ -299,6 +299,9 @@ class IntercomCore {
   final List<String> internetRelays;
   final List<(String, int)> stunServers;
   InternetService? _internet;
+
+  /// For tests: the internet service while internet calls are on.
+  InternetService? get internetServiceForTest => _internet;
   String? _internetProblem;
 
   HomeKey? _homeKey;
