@@ -121,6 +121,20 @@ func TestOneTimePasswordMustBeChanged(t *testing.T) {
 	}
 }
 
+// doList: a request whose answer is a JSON list.
+func (wt *webTest) doList(method, path string) (int, []map[string]any) {
+	req, _ := http.NewRequest(method, wt.ts.URL+path, nil)
+	req.Header.Set("X-Gundil", "1")
+	resp, err := wt.c.Do(req)
+	if err != nil {
+		wt.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out []map[string]any
+	json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
 func (wt *webTest) signIn() {
 	wt.do("POST", "/api/login", map[string]any{"password": wt.pw})
 	if code, _ := wt.do("POST", "/api/password", map[string]any{"current": wt.pw, "new": "0123456789ab"}); code != 200 {
@@ -260,6 +274,39 @@ func TestPolicyAndDecisions(t *testing.T) {
 	if m := srv.decide(gw); m["mode"] != "off" || m["target"] != nil {
 		t.Fatalf("gateway turned off: %v", m)
 	}
+	// The Devices tab: what each was told at its last check-in, and what
+	// it will be told next. A device on the newest version is "up to
+	// date", not left with an older offer (an old "downgrade to …").
+	wt.do("POST", "/api/devices/phone-000001", map[string]any{"pin": ""})
+	srv.checkIn(device{ID: "phone-000003", Name: "Tab", Package: "android-arm64-v8a", Version: "1.9.0"})
+	srv.checkIn(device{ID: "phone-000003", Name: "Tab", Package: "android-arm64-v8a", Version: "1.9.1"})
+	row := func(id string) map[string]any {
+		_, list := wt.doList("GET", "/api/devices")
+		for _, d := range list {
+			if d["id"] == id {
+				return d
+			}
+		}
+		t.Fatalf("no device %s", id)
+		return nil
+	}
+	if d := row("phone-000003"); d["offered"] != "" || d["answer"] != "up to date" || d["nextOffer"] != "" || d["nextAnswer"] != "up to date" {
+		t.Fatalf("up to date after the update: %v", d)
+	}
+	// Policy changed since its check-in: the next answer shows it.
+	wt.do("POST", "/api/policy", map[string]any{"android": map[string]any{"target": "1.9.0", "mode": "ask"}})
+	if d := row("phone-000003"); d["answer"] != "up to date" || d["nextOffer"] != "1.9.0" {
+		t.Fatalf("next check-in after a policy change: %v", d)
+	}
+	srv.checkIn(device{ID: "phone-000003", Name: "Tab", Package: "android-arm64-v8a", Version: "1.9.1"})
+	if d := row("phone-000003"); d["offered"] != "1.9.0" || d["answer"] != "" {
+		t.Fatalf("told the downgrade: %v", d)
+	}
+	srv.checkIn(device{ID: "gateway-0001", Name: "Router", Package: "gateway-linux-arm64", Version: "1.9.0"})
+	if d := row("gateway-0001"); d["offered"] != "" || d["answer"] != "updates off" {
+		t.Fatalf("gateway with updates off: %v", d)
+	}
+
 	// Removing a version.
 	if code, _ := wt.do("DELETE", "/api/versions/1.9.0", nil); code != 200 {
 		t.Fatal("delete")

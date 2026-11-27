@@ -215,11 +215,23 @@ function renderDevices() {
     return;
   }
   for (const d of list) {
-    let state = null;
-    if (d.offered && d.offered !== d.version) {
-      const down = cmp(d.offered, d.version) < 0;
-      state = el('span', { class: 'tag ' + (down ? 'down' : 'up') }, `${down ? 'downgrade' : 'update'} to ${d.offered}`);
-    } else if (d.offered) state = el('span', { class: 'tag' }, 'up to date');
+    // What the server told it at its last check-in…
+    const told = (offer, answer) => {
+      if (offer && offer !== d.version) {
+        const down = cmp(offer, d.version) < 0;
+        return el('span', { class: 'tag ' + (down ? 'down' : 'up') }, `${down ? 'downgrade' : 'update'} to ${offer}`);
+      }
+      if (offer || answer === 'up to date') return el('span', { class: 'tag' }, 'up to date');
+      return answer ? el('span', { class: 'tag' }, answer) : null;
+    };
+    let state = told(d.offered, d.answer);
+    // …and, when it changed since (new version, policy or pin), what it
+    // will be told at the next one.
+    const nextSame = (d.nextOffer || '') === (d.offered || '') && (d.nextOffer || d.nextAnswer === (d.answer || 'up to date'));
+    if (!nextSame && d.lastSeen) {
+      const next = told(d.nextOffer, d.nextAnswer);
+      if (next) state = el('span', {}, state, state ? ' ' : null, el('span', { class: 'muted small' }, 'next check-in: '), next);
+    }
     const pin = el('select', { 'aria-label': 'Pin version for ' + d.name },
       el('option', { value: '' }, 'Follow policy'),
       versionsFor(d.package).map((v) => el('option', { value: v, selected: v === d.pin }, v)));

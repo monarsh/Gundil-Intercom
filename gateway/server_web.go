@@ -140,10 +140,13 @@ func (w *webServer) apiDevices(rw http.ResponseWriter, r *http.Request) {
 	devs := w.st.deviceList()
 	out := make([]map[string]any, 0, len(devs))
 	for _, d := range devs {
+		// What it will be told at its next check-in, with today's versions,
+		// policy and pin (it may differ from what it was told last).
+		nextOffer, nextAnswer := answerOf(w.srv.decide(&d))
 		out = append(out, map[string]any{"id": d.ID, "name": d.Name, "package": d.Package,
 			"family": familyOf(d.Package), "version": d.Version, "os": d.OS, "address": d.Address,
 			"firstSeen": d.FirstSeen, "lastSeen": d.LastSeen, "pin": d.Pin, "offered": d.Offered,
-			"fetched": d.Fetched})
+			"answer": d.Answer, "nextOffer": nextOffer, "nextAnswer": nextAnswer, "fetched": d.Fetched})
 	}
 	writeJSONResp(rw, 200, out)
 }

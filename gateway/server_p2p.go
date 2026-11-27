@@ -251,6 +251,37 @@ func (s *updateServer) decide(d *device) map[string]any {
 	return out
 }
 
+// checkIn records a device's check-in and what it is told. Every answer
+// is recorded (not only an offered version), so the Devices tab never
+// shows an old offer.
+func (s *updateServer) checkIn(in device) (*device, map[string]any) {
+	dev := s.st.checkIn(in)
+	info := s.decide(dev)
+	offered, answer := answerOf(info)
+	s.st.updateDevice(dev.ID, func(d *device) { d.Offered, d.Answer = offered, answer })
+	if offered != "" {
+		log.Printf("%s (%s %s) checked in: offered %s", dev.Name, dev.Package, dev.Version, offered)
+	} else {
+		log.Printf("%s (%s %s) checked in: %s", dev.Name, dev.Package, dev.Version, answer)
+	}
+	return dev, info
+}
+
+// answerOf: a decision as the offered version, or else what it says
+// ("up to date", "updates off" or the problem).
+func answerOf(info map[string]any) (offered, answer string) {
+	if t, ok := info["target"].(map[string]any); ok {
+		return t["version"].(string), ""
+	}
+	if m, _ := info["message"].(string); m != "" {
+		return "", m
+	}
+	if info["mode"] == "off" {
+		return "", "updates off"
+	}
+	return "", "up to date"
+}
+
 func (s *updateServer) serve(c *peerConn) {
 	defer c.fail(nil)
 	var dev *device
@@ -273,16 +304,9 @@ func (s *updateServer) serve(c *peerConn) {
 			if json.Unmarshal(f.payload, &m) != nil || len(m.ID) < 8 || len(m.ID) > 64 {
 				return
 			}
-			dev = s.st.checkIn(device{ID: m.ID, Name: clip(m.Name, 64), Package: clip(m.Package, 40),
+			var info map[string]any
+			dev, info = s.checkIn(device{ID: m.ID, Name: clip(m.Name, 64), Package: clip(m.Package, 40),
 				Version: clip(m.Version, 20), OS: clip(m.OS, 80), Address: c.link.addr.IP.String()})
-			info := s.decide(dev)
-			if t, ok := info["target"].(map[string]any); ok {
-				v := t["version"].(string)
-				s.st.updateDevice(dev.ID, func(d *device) { d.Offered = v })
-				log.Printf("%s (%s %s) checked in: offered %s", dev.Name, dev.Package, dev.Version, v)
-			} else {
-				log.Printf("%s (%s %s) checked in: nothing to do", dev.Name, dev.Package, dev.Version)
-			}
 			c.send(jsonFrame(tUpdInfo, info))
 		case tUpdGet:
 			var m struct {

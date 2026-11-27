@@ -35,7 +35,8 @@ type device struct {
 	FirstSeen time.Time `json:"firstSeen"`
 	LastSeen  time.Time `json:"lastSeen"`
 	Pin       string    `json:"pin,omitempty"`     // A version just for this device.
-	Offered   string    `json:"offered,omitempty"` // What it was told last.
+	Offered   string    `json:"offered,omitempty"` // The version it was offered at its last check-in ("" none).
+	Answer    string    `json:"answer,omitempty"`  // Otherwise what it was told: "up to date", "updates off", a problem.
 	Fetched   string    `json:"fetched,omitempty"` // The last file it downloaded from here.
 }
 
