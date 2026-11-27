@@ -54,10 +54,10 @@ Future<void> main() async {
     onHomeKeyChanged: (k) => settings.homeKey = k,
     shareCameras: settings.shareCameras,
   );
-  // Android: leave out the carrier's VoLTE / IMS link (it has an address
-  // even with Wi-Fi and mobile data off): discovery, internet calls and
-  // network-change checks use only real networks.
-  if (Platform.isAndroid) {
+  // Android and iPhone: leave out the carrier's VoLTE / IMS link (it has an
+  // address even with Wi-Fi and mobile data off): discovery, internet calls
+  // and network-change checks use only real networks.
+  if (Platform.isAndroid || Platform.isIOS) {
     usableInterfaceNames = PlatformBridge.usableInterfaces;
   }
   await service.start();

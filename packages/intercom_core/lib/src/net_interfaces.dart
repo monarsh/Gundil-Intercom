@@ -4,9 +4,9 @@
 /// IMS link (rmnet…, ccmni…) keeps an address even with Wi-Fi, mobile data
 /// and VPN off. Using it would send LAN discovery to the carrier, offer it
 /// to peers as a way to reach this phone, and treat its changes as a
-/// network switch. The app on Android sets [usableInterfaceNames] (from
-/// ConnectivityManager: networks with internet, Wi-Fi, Ethernet, VPN);
-/// elsewhere every interface is used.
+/// network switch. The app sets [usableInterfaceNames] on Android (from
+/// ConnectivityManager: networks with internet, Wi-Fi, Ethernet, VPN) and
+/// iPhone (NWPathMonitor's interfaces); elsewhere every interface is used.
 library;
 
 import 'dart:io';
@@ -15,7 +15,7 @@ import 'dart:io';
 /// tell (then every interface is used).
 typedef InterfaceNames = Future<Set<String>?> Function();
 
-/// Set by the app (Android); null: use every interface.
+/// Set by the app (Android, iPhone); null: use every interface.
 InterfaceNames? usableInterfaceNames;
 
 /// Whether interface [name] is in [allowed]; "v4-rmnet_data0" (Android's
@@ -24,8 +24,20 @@ bool interfaceAllowed(String name, Set<String> allowed) =>
     allowed.contains(name) ||
     (name.startsWith('v4-') && allowed.contains(name.substring(3)));
 
+/// Whether [name] is a mobile carrier's interface (data, VoLTE / IMS,
+/// Wi-Fi calling): Android rmnet… / ccmni… / seth… / ims… / epdg…, iPhone
+/// pdp_ip… / ipsec…. Only these are ever left out, so Wi-Fi, Ethernet, the
+/// phone's own hotspot and VPNs always work, also when the system lists
+/// them late or not at all (a Wi-Fi without internet).
+bool carrierInterface(String name) => _carrier.hasMatch(name);
+
+final _carrier = RegExp(
+  r'^(v4-)?(rmnet|r_rmnet|rev_rmnet|ccmni|cc2mni|seth|sipa|ims|epdg|pdp_ip|ipsec)',
+);
+
 /// The IPv4 interfaces in use: [usable] ones, and the [ignored] ones (a
-/// carrier link without internet), for showing them.
+/// carrier interface the system doesn't list as usable, e.g. VoLTE), for
+/// showing them.
 Future<({List<NetworkInterface> usable, List<NetworkInterface> ignored})>
 listInterfaces({bool includeLoopback = false}) async {
   final all = await NetworkInterface.list(
@@ -45,8 +57,8 @@ listInterfaces({bool includeLoopback = false}) async {
   final usable = <NetworkInterface>[];
   final ignored = <NetworkInterface>[];
   for (final i in all) {
-    final loop = i.addresses.every((a) => a.isLoopback);
-    (loop || interfaceAllowed(i.name, names) ? usable : ignored).add(i);
+    final keep = interfaceAllowed(i.name, names) || !carrierInterface(i.name);
+    (keep ? usable : ignored).add(i);
   }
   return (usable: usable, ignored: ignored);
 }

@@ -18,17 +18,49 @@ void main() {
     expect(l.usable, isNotEmpty);
   });
 
-  test('the filter leaves out the others, keeps loopback', () async {
-    usableInterfaceNames = () async => <String>{};
-    final l = await listInterfaces(includeLoopback: true);
-    for (final i in l.usable) {
-      expect(i.addresses.every((a) => a.isLoopback), isTrue, reason: i.name);
+  test('only carrier interfaces are ever left out', () {
+    for (final n in [
+      'rmnet_data1',
+      'rmnet_ims00',
+      'r_rmnet_data0',
+      'ccmni1',
+      'seth_lte1',
+      'ims0',
+      'epdg1',
+      'pdp_ip1',
+      'ipsec0',
+      'v4-rmnet_data2',
+    ]) {
+      expect(carrierInterface(n), isTrue, reason: n);
     }
-    expect(
-      l.ignored.every((i) => i.addresses.any((a) => !a.isLoopback)),
-      isTrue,
-    );
+    for (final n in [
+      'wlan0',
+      'en0',
+      'eth0',
+      'ap0',
+      'swlan0',
+      'tun0',
+      'utun3',
+      'bridge100',
+      'lo',
+    ]) {
+      expect(carrierInterface(n), isFalse, reason: n);
+    }
   });
+
+  test(
+    'an empty list from the system keeps every non-carrier interface',
+    () async {
+      final all = (await listInterfaces(includeLoopback: true)).usable;
+      usableInterfaceNames = () async => <String>{};
+      final l = await listInterfaces(includeLoopback: true);
+      expect(l.usable.map((i) => i.name), [
+        for (final i in all)
+          if (!carrierInterface(i.name)) i.name,
+      ]);
+      expect(l.ignored.every((i) => carrierInterface(i.name)), isTrue);
+    },
+  );
 
   test("a filter that fails or can't tell uses every interface", () async {
     final all = (await listInterfaces()).usable.length;

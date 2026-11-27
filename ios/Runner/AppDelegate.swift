@@ -23,9 +23,9 @@ import UIKit
 }
 
 /// The "p2p_intercom/platform" channel on iOS (lib/src/platform_bridge.dart):
-/// the microphone permission, call audio, "Run in background", and Wi-Fi /
-/// mobile data and Low Power Mode for the battery saving; the rest is
-/// Android-only.
+/// the microphone permission, call audio, "Run in background", Wi-Fi /
+/// mobile data and Low Power Mode for the battery saving, and the usable
+/// network interfaces; the rest is Android-only.
 enum GundilPlatform {
   static var channel: FlutterMethodChannel?
 
@@ -47,6 +47,8 @@ enum GundilPlatform {
         result(nil)
       case "networkKind":
         result(PowerAndNetwork.shared.kind)
+      case "usableInterfaces":
+        result(PowerAndNetwork.shared.interfaces)
       case "lowPowerMode":
         result(ProcessInfo.processInfo.isLowPowerModeEnabled)
       case "getBackground":
@@ -82,6 +84,13 @@ final class PowerAndNetwork {
   /// as on Android; a VPN counts as the network it runs over.
   private(set) var kind = "none"
 
+  /// The interfaces apps may use (Wi-Fi, mobile data, Ethernet, a VPN's
+  /// utun), as iOS lists them for the current path. Not in it: the
+  /// carrier's VoLTE / IMS link (pdp_ip1, …), which keeps an address with
+  /// Wi-Fi and mobile data off. Nil until the first update (the app then
+  /// uses every interface).
+  private(set) var interfaces: [String]? = nil
+
   func start() {
     guard !started else { return }
     started = true
@@ -96,9 +105,11 @@ final class PowerAndNetwork {
           k = "mobile"
         }
       }
+      let names = path.availableInterfaces.map { $0.name }
       DispatchQueue.main.async {
         guard let self = self else { return }
         self.kind = k
+        self.interfaces = names
         if k != self.lastKind {
           self.lastKind = k
           self.changed()
