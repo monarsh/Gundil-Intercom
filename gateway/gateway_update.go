@@ -306,7 +306,12 @@ func (g *gateway) updateOnce(serverPub []byte, pkg string, how installPolicy) (i
 	}
 	g.setUpdate(func(u *updateStatus) { u.Busy = "installing" })
 	log.Printf("self-update: installing %s", t.Version)
-	dir, err := os.MkdirTemp("", "gundil-update")
+	exe, err := os.Executable()
+	if err != nil {
+		return false, err
+	}
+	exe, _ = filepath.EvalSymlinks(exe)
+	dir, err := updateDir(exe, "gundil-update")
 	if err != nil {
 		return false, err
 	}

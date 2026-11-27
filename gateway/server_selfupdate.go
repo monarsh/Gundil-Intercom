@@ -226,7 +226,7 @@ func (u *selfUpdater) install() (installed bool, err error) {
 	}
 	ver := strings.TrimPrefix(rel.Tag, "v")
 	log.Printf("server update: installing %s (%s)", ver, ast.Name)
-	dir, err := os.MkdirTemp("", "gundil-server-update")
+	dir, err := updateDir(exe, "gundil-server-update")
 	if err != nil {
 		return false, err
 	}

@@ -203,3 +203,20 @@ func TestServerSelfUpdateFromTestBuild(t *testing.T) {
 		t.Fatalf("1.3.0 must replace 1.3.0-test.2: %v %v", installed, err)
 	}
 }
+
+// The Linux services can't write to /tmp (ProtectSystem=strict): the
+// download goes next to the program instead, and is cleaned up.
+func TestServerSelfUpdateWithoutTmp(t *testing.T) {
+	old := version
+	version = "1.2.0"
+	defer func() { version = old }()
+	st := newSelfTest(t, "1.3.0")
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing", "tmp"))
+	if installed, err := st.u.install(); err != nil || !installed || read(t, st.exe) != "new program" {
+		t.Fatalf("without a usable /tmp: %v %v", installed, err)
+	}
+	left, _ := filepath.Glob(filepath.Join(filepath.Dir(st.exe), ".gundil-server-update-*"))
+	if len(left) != 0 {
+		t.Fatalf("download folder left behind: %v", left)
+	}
+}

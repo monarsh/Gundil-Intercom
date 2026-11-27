@@ -50,6 +50,16 @@ func fetchURL(url, dst string) error {
 	return err
 }
 
+// updateDir: a folder for the download. The system's temp folder first (RAM
+// on OpenWrt); else one next to [exe]: the Linux services may write only
+// there (ProtectSystem=strict makes /tmp read-only for them).
+func updateDir(exe, prefix string) (string, error) {
+	if d, err := os.MkdirTemp("", prefix); err == nil {
+		return d, nil
+	}
+	return os.MkdirTemp(filepath.Dir(exe), "."+prefix+"-")
+}
+
 func programName() string {
 	exe, err := os.Executable()
 	if err != nil {
