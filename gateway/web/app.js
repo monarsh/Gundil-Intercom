@@ -436,15 +436,17 @@ async function loadServer() {
 
 // --------------------------------------------------- move (server key)
 
-async function exportKey() {
-  const pw = prompt('Your admin password, to show the server key:');
-  if (!pw) return;
+async function exportKey(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  $('#key-export-error').textContent = '';
   try {
-    const r = await api('POST', 'server-key/export', { password: pw });
+    const r = await api('POST', 'server-key/export', { password: f.password.value });
+    f.password.value = '';
     $('#key-text').textContent = r.key;
     $('#key-out').hidden = false;
   } catch (e) {
-    toast(e.message);
+    $('#key-export-error').textContent = e.message;
   }
 }
 
@@ -690,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#change-pw').addEventListener('click', () => showPassword(false));
   $('#log-refresh').addEventListener('click', loadLog);
   $('#su-check').addEventListener('click', checkSelf);
-  $('#key-export').addEventListener('click', exportKey);
+  $('#f-key-export').addEventListener('submit', exportKey);
   $('#key-hide').addEventListener('click', hideKey);
   $('#key-download').addEventListener('click', downloadKey);
   $('#key-copy').addEventListener('click', async () => {

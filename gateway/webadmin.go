@@ -299,7 +299,12 @@ func securityHeaders(h http.Handler) http.Handler {
 		hd.Set("X-Frame-Options", "DENY")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "no-referrer")
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			// The page's files: the browser must ask again each time, or
+			// after an update it may run the old app.js with the new page
+			// (buttons that do nothing).
+			hd.Set("Cache-Control", "no-cache")
+		} else {
 			hd.Set("Cache-Control", "no-store")
 			// Only the page itself may call the API (a cross-site form or
 			// fetch can't add this header without CORS, which is off).

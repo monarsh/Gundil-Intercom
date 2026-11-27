@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,15 @@ func ghGet(url string, v any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if (resp.StatusCode == 403 || resp.StatusCode == 429) && resp.Header.Get("X-RateLimit-Remaining") == "0" {
+		wait := ""
+		if t, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+			if m := time.Until(time.Unix(t, 0)).Round(time.Minute); m > 0 {
+				wait = fmt.Sprintf(" in about %d min", int(m.Minutes()))
+			}
+		}
+		return fmt.Errorf("GitHub allows 60 checks an hour from one address, and they are used up; try again%s", wait)
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("GitHub answered %s", resp.Status)
 	}

@@ -215,6 +215,10 @@ func TestGatewayWebOnlyFromTheLAN(t *testing.T) {
 		if rec.Code != 200 || rec.Body.Len() < 100 {
 			t.Errorf("%s: %d (%d bytes)", p, rec.Code, rec.Body.Len())
 		}
+		// Never an old app.js with a new page after an update.
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("%s: Cache-Control %q", p, cc)
+		}
 	}
 }
 

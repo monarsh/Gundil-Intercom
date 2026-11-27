@@ -115,7 +115,11 @@
     <div class="card" id="key-card">
       <h3>Move this server (same server code)</h3>
       <p class="muted small">The server code is the public half of this server's key; the apps trust only the server that holds the key. To move the server to another machine and keep the code, export the key here and import it there. The devices, versions and policy don't move with it: add the versions again on the new server (the devices check in by themselves).</p>
-      <div class="row"><button id="key-export">Export server key</button></div>
+      <form id="f-key-export" class="row" autocomplete="off">
+        <input name="password" type="password" autocomplete="current-password" placeholder="Admin password" aria-label="Admin password" required>
+        <button type="submit">Export server key</button>
+      </form>
+      <p class="error" id="key-export-error"></p>
       <div id="key-out" hidden>
         <p class="error small">Secret: whoever has this key can act as your update server for every app. Keep it like a password and delete copies you don't need.</p>
         <code id="key-text" class="code"></code>
