@@ -29,6 +29,7 @@ Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no acc
 | Linux PC or server | `app-gundil-gateway-VERSION-linux-x86_64.tar.gz` |
 | Windows PC | `app-gundil-gateway-VERSION-windows-x86_64.zip` (or `…-arm64.zip`) |
 | Any of these, installed from your computer over SSH | `app-gundil-gateway-deploy.sh` (`./app-gundil-gateway-deploy.sh root@192.168.1.1` installs the newest release; `--version X.Y.Z` another one; `--home-key` sets the home key) |
+| Remove it again from your computer (keeps the settings unless `--purge`) | `app-gundil-gateway-uninstall.sh` (`./app-gundil-gateway-uninstall.sh root@192.168.1.1`) |
 
 **Update server** (`gundil-update-server`: tells every Gundil Intercom which version to install and hands out the files, without a public IP; admin web page; see below). Its files start with `server-`:
 
@@ -42,6 +43,7 @@ Intercoms find each other automatically on the same Wi-Fi/LAN. No server, no acc
 | OpenWrt web page (LuCI: **Services → Gundil update server**), together with one of the above | `server-gundil-update-server-VERSION-openwrt25-luci.apk` / `…-openwrt-luci.ipk` |
 | Windows PC (a service) | `server-gundil-update-server-VERSION-windows-x86_64.zip` (or `…-arm64.zip`) |
 | Any desktop Linux, one file | `server-gundil-update-server-VERSION-x86_64.AppImage` (or `…-aarch64.AppImage`) |
+| Your computer: install or remove over SSH | `server-gundil-update-server-deploy.sh` (`./server-gundil-update-server-deploy.sh root@192.168.1.1`), `server-gundil-update-server-uninstall.sh` (keeps the data and server key unless `--purge`) |
 | Your computer: deploy over SSH, reset the portal | `server-gundil-update-server-VERSION-tools.zip` (`deploy.sh`, `reset-portal.sh`, `reset-portal.ps1`, the web page) |
 
 The app's files start with `app-`. `SHA256SUMS.txt` lists checksums for every file.
