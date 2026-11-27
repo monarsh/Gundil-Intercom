@@ -253,7 +253,7 @@ packages:
       path: "packages/intercom_core"
       relative: true
     source: path
-    version: "1.12.0"
+    version: "1.12.1"
   jni:
     dependency: transitive
     description:
