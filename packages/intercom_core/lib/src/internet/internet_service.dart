@@ -17,6 +17,7 @@ import 'rendezvous.dart';
 import 'schnorr.dart';
 import 'stun.dart';
 import 'udp_link.dart';
+import '../net_interfaces.dart';
 
 class InternetException implements Exception {
   InternetException(this.message);
@@ -135,9 +136,7 @@ class InternetService {
 
   static Future<Set<String>> _localIPv4() async {
     try {
-      final ifaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-      );
+      final ifaces = await usableInterfaces();
       return {
         for (final i in ifaces)
           for (final a in i.addresses)

@@ -13,6 +13,7 @@ import '../camera/camera.dart';
 import '../debug_log.dart';
 import '../peer_connection.dart';
 import '../protocol.dart';
+import '../net_interfaces.dart';
 
 /// A sender slows down while this much waits to go out on the link.
 const int _maxPending = 512 * 1024;
@@ -27,9 +28,7 @@ Future<(List<String>, Set<String>)> localSubnets() async {
   final nets = <String>{};
   final own = <String>{};
   try {
-    for (final i in await NetworkInterface.list(
-      type: InternetAddressType.IPv4,
-    )) {
+    for (final i in await usableInterfaces()) {
       for (final a in i.addresses) {
         final b = a.rawAddress;
         final private =

@@ -54,6 +54,12 @@ Future<void> main() async {
     onHomeKeyChanged: (k) => settings.homeKey = k,
     shareCameras: settings.shareCameras,
   );
+  // Android: leave out the carrier's VoLTE / IMS link (it has an address
+  // even with Wi-Fi and mobile data off): discovery, internet calls and
+  // network-change checks use only real networks.
+  if (Platform.isAndroid) {
+    usableInterfaceNames = PlatformBridge.usableInterfaces;
+  }
   await service.start();
   // iPhone: Wi-Fi / mobile data and Low Power Mode set the idle battery
   // saving; iOS tells us when either changes.

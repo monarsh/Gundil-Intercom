@@ -23,6 +23,7 @@ import '../peer_connection.dart';
 import '../protocol.dart';
 import '../secure_channel.dart';
 import 'release_signature.dart';
+import '../net_interfaces.dart';
 
 class UpdateException implements Exception {
   UpdateException(this.message);
@@ -583,9 +584,7 @@ class _Session {
 
   static Future<Set<String>> _localIPv4() async {
     try {
-      final ifaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-      );
+      final ifaces = await usableInterfaces();
       return {
         for (final i in ifaces)
           for (final a in i.addresses)

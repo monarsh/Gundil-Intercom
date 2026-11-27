@@ -125,6 +125,7 @@ class GundilApp : Application() {
                         result.success(null)
                     }
                     "networkKind" -> result.success(networkKind())
+                    "usableInterfaces" -> result.success(usableInterfaces())
                     "acquireMulticastLock" -> { acquireMulticastLock(); result.success(null) }
                     "releaseMulticastLock" -> { releaseMulticastLock(); result.success(null) }
                     "getBackground" -> result.success(backgroundEnabled)
@@ -235,6 +236,35 @@ class GundilApp : Application() {
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
         }
         return if (mobile) "mobile" else "none"
+    }
+
+    /**
+     * The interfaces of the networks apps may use: Wi-Fi, Ethernet, VPN,
+     * Bluetooth, and mobile networks with internet. Left out: mobile
+     * networks without it, like the carrier's VoLTE / IMS link, which keeps
+     * an address with Wi-Fi, mobile data and VPN off. Null when it can't
+     * tell (then the app uses every interface).
+     */
+    @Suppress("DEPRECATION")
+    private fun usableInterfaces(): List<String>? {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return null
+        val names = mutableListOf<String>()
+        try {
+            for (n in cm.allNetworks) {
+                val caps = cm.getNetworkCapabilities(n) ?: continue
+                val cellularOnly = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                    !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                    !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) &&
+                    !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                if (cellularOnly && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
+                val name = cm.getLinkProperties(n)?.interfaceName ?: continue
+                names.add(name)
+            }
+        } catch (e: Exception) {
+            return null
+        }
+        return names
     }
 
     // ------------------------------------------------------------ discovery

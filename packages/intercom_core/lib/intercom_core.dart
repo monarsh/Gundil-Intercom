@@ -2,6 +2,7 @@
 library;
 
 export 'src/audio_engine.dart';
+export 'src/net_interfaces.dart';
 export 'src/camera/camera.dart';
 export 'src/camera/onvif.dart';
 export 'src/camera/rtsp_client.dart' show checkRtsp;

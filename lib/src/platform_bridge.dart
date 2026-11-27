@@ -118,6 +118,20 @@ class PlatformBridge {
     }
   }
 
+  /// Android: the interfaces of networks apps may use (not the carrier's
+  /// VoLTE / IMS link). Null elsewhere or when it can't tell.
+  static Future<Set<String>?> usableInterfaces() async {
+    if (!_android) return null;
+    try {
+      final l = await _channel.invokeListMethod<String>('usableInterfaces');
+      return l?.toSet();
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// iPhone: whether Low Power Mode is on (Settings > Battery).
   static Future<bool> lowPowerMode() async {
     if (!Platform.isIOS) return false;

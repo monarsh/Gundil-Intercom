@@ -26,6 +26,7 @@ import 'peer_connection.dart';
 import 'protocol.dart';
 import 'secure_channel.dart';
 import 'version.dart';
+import 'net_interfaces.dart';
 
 /// Notification for the UI (errors and short info messages).
 class IntercomEvent {
@@ -1197,10 +1198,7 @@ class IntercomCore {
     if (_netChecking || _shutDown) return;
     _netChecking = true;
     try {
-      final ifaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
+      final ifaces = await usableInterfaces();
       final addresses = {
         for (final i in ifaces)
           for (final a in i.addresses) a.address,

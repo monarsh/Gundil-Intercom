@@ -530,7 +530,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// More → This device: version, addresses, port and discovery.
   Future<void> _deviceInfoDialog() async {
-    final addrs = await _localAddresses();
+    final (addrs, ignored) = await _localAddresses();
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -540,6 +540,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           'Gundil Intercom $appVersion\n'
           'Name: ${service.name}\n'
           'Addresses: ${addrs.isEmpty ? 'none' : addrs.join(', ')}\n'
+          '${ignored.isEmpty ? '' : 'Not used (no internet, e.g. the carrier\'s VoLTE): ${ignored.join(', ')}\n'}'
           'TCP port: ${service.listenPort}\n'
           'Discovery: ${service.discoveryRunning ? 'UDP $discoveryPort broadcast' : 'off'}',
         ),
@@ -670,21 +671,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Every IPv4 address with its network interface, e.g.
-  /// "192.168.1.20 (wlan0)". The name tells what it is: on a phone with
-  /// Wi-Fi and mobile data off, the carrier's VoLTE link (rmnet…, ims…,
-  /// ccmni…) can still have one.
-  static Future<List<String>> _localAddresses() async {
+  /// The IPv4 addresses the app uses, with their network interface, e.g.
+  /// "192.168.1.20 (wlan0)", and the ones it ignores: on Android the
+  /// carrier's VoLTE / IMS link keeps an address with Wi-Fi, mobile data
+  /// and VPN off, but isn't for apps.
+  static Future<(List<String>, List<String>)> _localAddresses() async {
     try {
-      final ifaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-      );
-      return [
+      final l = await listInterfaces();
+      List<String> show(List<NetworkInterface> ifaces) => [
         for (final i in ifaces)
           for (final a in i.addresses) '${a.address} (${i.name})',
       ];
+      return (show(l.usable), show(l.ignored));
     } catch (_) {
-      return const [];
+      return (const <String>[], const <String>[]);
     }
   }
 

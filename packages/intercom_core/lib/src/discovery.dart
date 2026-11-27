@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'protocol.dart';
+import 'net_interfaces.dart';
 
 /// A beacon received from another intercom on the LAN.
 class DiscoveryBeacon {
@@ -158,10 +159,7 @@ class Discovery {
   Future<void> _refreshTargets() async {
     final targets = <String>{'255.255.255.255'};
     try {
-      final ifaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
+      final ifaces = await usableInterfaces();
       for (final iface in ifaces) {
         for (final a in iface.addresses) {
           final parts = a.address.split('.');
